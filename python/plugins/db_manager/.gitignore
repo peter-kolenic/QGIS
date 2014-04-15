@@ -1,3 +1,7 @@
 *.pyc
 *~
-
+ui_*.py
+resources_rc.py
+.settings
+CMakeCache.txt
+CMakeFiles

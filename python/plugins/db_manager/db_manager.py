@@ -173,6 +173,21 @@ class DBManager(QMainWindow):
 
 		inLayer.deleteLater()
 
+	def publishActionSlot(self):
+		db = self.tree.currentDatabase() # XXX table must be selected, DB is not enough
+		if db is None:
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("No database selected or you are not connected to it."))
+			return
+
+		outUri = db.uri()
+		schema = self.tree.currentSchema()
+		if schema:
+			outUri.setDataSource( schema.name, "", "", "" )
+
+		from .dlg_publish_table import DlgPublishTable
+		dlg = DlgPublishTable(None, db, outUri, self)
+		dlg.exec_()
+
 	def runSqlWindow(self):
 		db = self.tree.currentDatabase()
 		if db == None:
@@ -394,6 +409,7 @@ class DBManager(QMainWindow):
 		sep = self.menuTable.addSeparator(); sep.setObjectName("DB_Manager_TableMenu_placeholder"); sep.setVisible(False)
 		self.actionImport = self.menuTable.addAction( QIcon(":/db_manager/actions/import"), self.tr("&Import layer/file"), self.importActionSlot )
 		self.actionExport = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Export to file"), self.exportActionSlot )
+		self.actionPublish = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&publish to database"), self.publishActionSlot )
 		self.menuTable.addSeparator()
 		#self.actionShowSystemTables = self.menuTable.addAction(self.tr("Show system tables/views"), self.showSystemTables)
 		#self.actionShowSystemTables.setCheckable(True)
@@ -405,3 +421,4 @@ class DBManager(QMainWindow):
 		self.toolBar.addAction( self.actionSqlWindow )
 		self.toolBar.addAction( self.actionImport )
 		self.toolBar.addAction( self.actionExport )
+		self.toolBar.addAction( self.actionPublish )

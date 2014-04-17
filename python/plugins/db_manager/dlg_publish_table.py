@@ -179,6 +179,11 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 		return True
 
 
+	def populateDatabases(self):
+		self.cboDalabase.clear()
+		# XXX self.db won't work - it is db of selected table
+
+
 	def populateSchemas(self):
 		if not self.db:
 			return
@@ -226,103 +231,118 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 ##		self.cboEncoding.setCurrentIndex(2)
 
 	def accept(self):
-		if self.mode == self.ASK_FOR_INPUT_MODE:
-			# create the input layer (if not already done) and
-			# update available options w/o changing the tablename!
-			self.cboTable.blockSignals(True)
-			table = self.cboTable.currentText()
-			self.updateInputLayer()
-			self.cboTable.setEditText(table)
-			self.cboTable.blockSignals(False)
-
-		# sanity checks
-		if self.inLayer is None:
-			QMessageBox.information(self, self.tr("Import to database"), self.tr("Input layer missing or not valid"))
-			return
-
-		if self.cboTable.currentText() == "":
-			QMessageBox.information(self, self.tr("Import to database"), self.tr("Output table name is required"))
-			return
-
-		if self.chkSourceSrid.isEnabled() and self.chkSourceSrid.isChecked():
-			try:
-				sourceSrid = self.editSourceSrid.text()
-			except ValueError:
-				QMessageBox.information(self, self.tr("Import to database"), self.tr("Invalid source srid: must be an integer"))
-				return
-
-		if self.chkTargetSrid.isEnabled() and self.chkTargetSrid.isChecked():
-			try:
-				targetSrid = self.editTargetSrid.text()
-			except ValueError:
-				QMessageBox.information(self, self.tr("Import to database"), self.tr("Invalid target srid: must be an integer"))
-				return
+###		if self.mode == self.ASK_FOR_INPUT_MODE:
+###			# create the input layer (if not already done) and
+###			# update available options w/o changing the tablename!
+###			self.cboTable.blockSignals(True)
+###			table = self.cboTable.currentText()
+###			self.updateInputLayer()
+###			self.cboTable.setEditText(table)
+###			self.cboTable.blockSignals(False)
+###
+###		# sanity checks
+###		if self.inLayer is None:
+###			QMessageBox.information(self, self.tr("Import to database"), self.tr("Input layer missing or not valid"))
+###			return
+###
+###		if self.cboTable.currentText() == "":
+###			QMessageBox.information(self, self.tr("Import to database"), self.tr("Output table name is required"))
+###			return
+###
+###		if self.chkSourceSrid.isEnabled() and self.chkSourceSrid.isChecked():
+###			try:
+###				sourceSrid = self.editSourceSrid.text()
+###			except ValueError:
+###				QMessageBox.information(self, self.tr("Import to database"), self.tr("Invalid source srid: must be an integer"))
+###				return
+###
+###		if self.chkTargetSrid.isEnabled() and self.chkTargetSrid.isChecked():
+###			try:
+###				targetSrid = self.editTargetSrid.text()
+###			except ValueError:
+###				QMessageBox.information(self, self.tr("Import to database"), self.tr("Invalid target srid: must be an integer"))
+###				return
 
 		# override cursor
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
-		# store current input layer crs and encoding, so I can restore it
-		prevInCrs = self.inLayer.crs()
-		prevInEncoding = self.inLayer.dataProvider().encoding()
 
+		publishUri = self.db.uri()  # XXX i need to populate database combobox first
+
+		publishSchema = self.cboSchema.currentText()
+		publishTable = self.cboTable.currentText()
+		inputgeom = self.outUri.geometryColumn()
+
+		publishUri.setDataSource(publishSchema, publishTable, inputgeom)
+
+
+
+###		# store current input layer crs and encoding, so I can restore it
+###		prevInCrs = self.inLayer.crs()
+###		prevInEncoding = self.inLayer.dataProvider().encoding()
+###
 		try:
-			schema = self.outUri.schema() if not self.cboSchema.isEnabled() else self.cboSchema.currentText()
-			table = self.cboTable.currentText()
-
-			# get pk and geom field names from the source layer or use the
-			# ones defined by the user
-##			pk = self.outUri.keyColumn() if not self.chkPrimaryKey.isChecked() else self.editPrimaryKey.text()
-
-			if self.inLayer.hasGeometryType() and self.chkGeomColumn.isEnabled():
-				geom = self.outUri.geometryColumn() if not self.chkGeomColumn.isChecked() else self.editGeomColumn.text()
-				geom = geom if geom != "" else self.default_geom
-			else:
-				geom = ""
-
-			# get output params, update output URI
-			self.outUri.setDataSource( schema, table, geom, "", pk )
-			uri = self.outUri.uri()
-
+###			schema = self.outUri.schema() if not self.cboSchema.isEnabled() else self.cboSchema.currentText()
+###			table = self.cboTable.currentText()
+###
+###			# get pk and geom field names from the source layer or use the
+###			# ones defined by the user
+#####			pk = self.outUri.keyColumn() if not self.chkPrimaryKey.isChecked() else self.editPrimaryKey.text()
+###
+###			if self.inLayer.hasGeometryType() and self.chkGeomColumn.isEnabled():
+###				geom = self.outUri.geometryColumn() if not self.chkGeomColumn.isChecked() else self.editGeomColumn.text()
+###				geom = geom if geom != "" else self.default_geom
+###			else:
+###				geom = ""
+###
+###			# get output params, update output URI
+###			self.outUri.setDataSource( schema, table, geom, "", pk )
+###			uri = self.outUri.uri()
+###
 			providerName = self.db.dbplugin().providerName()
-
+###
 			options = {}
-			if self.radCreate.isChecked() and self.chkDropTable.isChecked():
-				options['overwrite'] = True
-##			elif self.radAppend.isChecked():
-##				options['append'] = True
-			if self.chkSinglePart.isEnabled() and self.chkSinglePart.isChecked():
-				options['forceSinglePartGeometryType'] = True
+###			if self.radCreate.isChecked() and self.chkDropTable.isChecked():
+###				options['overwrite'] = True
+#####			elif self.radAppend.isChecked():
+#####				options['append'] = True
+###			if self.chkSinglePart.isEnabled() and self.chkSinglePart.isChecked():
+###				options['forceSinglePartGeometryType'] = True
+###
+###			outCrs = None
+###			if self.chkTargetSrid.isEnabled() and self.chkTargetSrid.isChecked():
+###				targetSrid = int(self.editTargetSrid.text())
+###				outCrs = qgis.core.QgsCoordinateReferenceSystem(targetSrid)
+###
+###			# update input layer crs and encoding
+###			if self.chkSourceSrid.isEnabled() and self.chkSourceSrid.isChecked():
+###				sourceSrid = int(self.editSourceSrid.text())
+###				inCrs = qgis.core.QgsCoordinateReferenceSystem(sourceSrid)
+###				self.inLayer.setCrs( inCrs )
+###
+#####			if self.chkEncoding.isEnabled() and self.chkEncoding.isChecked():
+#####				enc = self.cboEncoding.currentText()
+#####				self.inLayer.setProviderEncoding( enc )
 
-			outCrs = None
-			if self.chkTargetSrid.isEnabled() and self.chkTargetSrid.isChecked():
-				targetSrid = int(self.editTargetSrid.text())
-				outCrs = qgis.core.QgsCoordinateReferenceSystem(targetSrid)
 
-			# update input layer crs and encoding
-			if self.chkSourceSrid.isEnabled() and self.chkSourceSrid.isChecked():
-				sourceSrid = int(self.editSourceSrid.text())
-				inCrs = qgis.core.QgsCoordinateReferenceSystem(sourceSrid)
-				self.inLayer.setCrs( inCrs )
-
-##			if self.chkEncoding.isEnabled() and self.chkEncoding.isChecked():
-##				enc = self.cboEncoding.currentText()
-##				self.inLayer.setProviderEncoding( enc )
 
 			# do the import!
-			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( self.inLayer, uri, providerName, outCrs, False, False, options )
+###			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( self.inLayer, uri, providerName, outCrs, False, False, options )
+			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres'), publishUri.uri(), providerName, None, False, False, options )
+#			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres'), publishUri, providerName, None, False, False, options )
 		except Exception as e:
 			ret = -1
 			errMsg = unicode( e )
 
 		finally:
 			# restore input layer crs and encoding
-			self.inLayer.setCrs( prevInCrs )
-			self.inLayer.setProviderEncoding( prevInEncoding )
+###			self.inLayer.setCrs( prevInCrs )
+###			self.inLayer.setProviderEncoding( prevInEncoding )
 			# restore cursor
 			QApplication.restoreOverrideCursor()
 
 		if ret != 0:
 			output = qgis.gui.QgsMessageViewer()
-			output.setTitle( self.tr("Import to database") )
+			output.setTitle( self.tr("Publish to database") )
 			output.setMessageAsPlainText( self.tr("Error %d\n%s") % (ret, errMsg) )
 			output.showMessage()
 			return
@@ -331,7 +351,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 		if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
 			self.db.connector.createSpatialIndex( (schema, table), geom )
 
-		QMessageBox.information(self, self.tr("Import to database"), self.tr("Import was successful."))
+		QMessageBox.information(self, self.tr("Publish to database"), self.tr("Publish was successful."))
 		return QDialog.accept(self)
 
 

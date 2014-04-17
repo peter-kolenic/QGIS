@@ -174,18 +174,16 @@ class DBManager(QMainWindow):
 		inLayer.deleteLater()
 
 	def publishActionSlot(self):
-		db = self.tree.currentDatabase() # XXX table must be selected, DB is not enough
-		if db is None:
-			QMessageBox.information(self, self.tr("Sorry"), self.tr("No database selected or you are not connected to it."))
+		table = self.tree.currentTable()
+		if table is None:
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
 			return
 
-		outUri = db.uri()
-		schema = self.tree.currentSchema()
-		if schema:
-			outUri.setDataSource( schema.name, "", "", "" )
+		toPublishUri = table.uri()
+		db = self.tree.currentDatabase()
 
 		from .dlg_publish_table import DlgPublishTable
-		dlg = DlgPublishTable(None, db, outUri, self)
+		dlg = DlgPublishTable(None, db, toPublishUri, self)
 		dlg.exec_()
 
 	def runSqlWindow(self):

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>514</width>
-    <height>397</height>
+    <width>628</width>
+    <height>575</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -20,30 +20,6 @@
       <string>Output table</string>
      </property>
      <layout class="QGridLayout" name="gridLayout_2">
-      <item row="0" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Database</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QRadioButton" name="radCreateNewTable">
-        <property name="text">
-         <string>Create new table</string>
-        </property>
-        <attribute name="buttonGroup">
-         <string notr="true">buttonGroup</string>
-        </attribute>
-       </widget>
-      </item>
-      <item row="1" column="0">
-       <widget class="QLabel" name="label_2">
-        <property name="text">
-         <string>Schema</string>
-        </property>
-       </widget>
-      </item>
       <item row="1" column="1">
        <widget class="QComboBox" name="cboSchema">
         <property name="sizePolicy">
@@ -54,14 +30,14 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
+      <item row="3" column="0">
        <widget class="QLabel" name="label_3">
         <property name="text">
          <string>Table</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="1">
+      <item row="3" column="1">
        <widget class="QComboBox" name="cboTable">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
@@ -80,26 +56,17 @@
       <item row="0" column="1">
        <widget class="QComboBox" name="cboDatabase"/>
       </item>
-      <item row="2" column="0">
-       <widget class="QRadioButton" name="radUseExistingTable">
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
         <property name="text">
-         <string>Use existing table</string>
+         <string>Database</string>
         </property>
-        <property name="checked">
-         <bool>true</bool>
-        </property>
-        <attribute name="buttonGroup">
-         <string notr="true">buttonGroup</string>
-        </attribute>
        </widget>
       </item>
-      <item row="6" column="1">
-       <widget class="QLineEdit" name="lineTableName"/>
-      </item>
-      <item row="6" column="0">
-       <widget class="QLabel" name="label_4">
+      <item row="1" column="0">
+       <widget class="QLabel" name="label_2">
         <property name="text">
-         <string>Table</string>
+         <string>Schema</string>
         </property>
        </widget>
       </item>
@@ -110,10 +77,6 @@
      <zorder>label_3</zorder>
      <zorder>cboDatabase</zorder>
      <zorder>label</zorder>
-     <zorder>radUseExistingTable</zorder>
-     <zorder>radCreateNewTable</zorder>
-     <zorder>lineTableName</zorder>
-     <zorder>label_4</zorder>
     </widget>
    </item>
    <item>
@@ -123,62 +86,30 @@
      </property>
      <layout class="QVBoxLayout">
       <item>
-       <widget class="QRadioButton" name="radSynchronize">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="text">
-         <string>Synchronize changes</string>
-        </property>
-        <property name="checked">
-         <bool>true</bool>
+       <widget class="QPlainTextEdit" name="plainTextEdit">
+        <property name="plainText">
+         <string>sem tabulku</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QRadioButton" name="radCreate">
+       <widget class="QCheckBox" name="checkBox_2">
         <property name="text">
-         <string>Replace all data</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
+         <string>insert</string>
         </property>
        </widget>
       </item>
       <item>
-       <layout class="QHBoxLayout">
-        <item>
-         <spacer>
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item>
-         <widget class="QCheckBox" name="chkDropTable">
-          <property name="enabled">
-           <bool>false</bool>
-          </property>
-          <property name="text">
-           <string>Drop existing one</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
+       <widget class="QCheckBox" name="checkBox_3">
+        <property name="text">
+         <string>update</string>
+        </property>
+       </widget>
       </item>
       <item>
-       <widget class="QCheckBox" name="chkSpatialIndex">
+       <widget class="QCheckBox" name="checkBox">
         <property name="text">
-         <string>Create spatial index</string>
+         <string>delete</string>
         </property>
        </widget>
       </item>
@@ -201,8 +132,6 @@
   <zorder>groupBox_3</zorder>
  </widget>
  <tabstops>
-  <tabstop>radCreate</tabstop>
-  <tabstop>chkDropTable</tabstop>
   <tabstop>buttonBox</tabstop>
  </tabstops>
  <resources/>
@@ -220,22 +149,6 @@
     <hint type="destinationlabel">
      <x>286</x>
      <y>274</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>radCreate</sender>
-   <signal>toggled(bool)</signal>
-   <receiver>chkDropTable</receiver>
-   <slot>setEnabled(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>131</x>
-     <y>216</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>140</x>
-     <y>245</y>
     </hint>
    </hints>
   </connection>

@@ -267,12 +267,14 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 		publishUri = self.db.uri()  # XXX i need to populate database combobox first
+		print publishUri
 
 		publishSchema = self.cboSchema.currentText()
 		publishTable = self.cboTable.currentText()
 		inputgeom = self.outUri.geometryColumn()
 
 		publishUri.setDataSource(publishSchema, publishTable, inputgeom)
+		print (publishSchema, publishTable, inputgeom)
 
 
 
@@ -280,6 +282,8 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 ###		prevInCrs = self.inLayer.crs()
 ###		prevInEncoding = self.inLayer.dataProvider().encoding()
 ###
+		successfull_imports = 0
+		failed_imports = 0
 		try:
 ###			schema = self.outUri.schema() if not self.cboSchema.isEnabled() else self.cboSchema.currentText()
 ###			table = self.cboTable.currentText()
@@ -299,6 +303,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 ###			uri = self.outUri.uri()
 ###
 			providerName = self.db.dbplugin().providerName()
+			print providerName
 ###
 			options = {}
 ###			if self.radCreate.isChecked() and self.chkDropTable.isChecked():
@@ -327,8 +332,22 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 
 			# do the import!
 ###			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( self.inLayer, uri, providerName, outCrs, False, False, options )
-			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres'), publishUri.uri(), providerName, None, False, False, options )
-#			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres'), publishUri, providerName, None, False, False, options )
+			ret = 0
+			print repr(publishUri.uri())
+			print repr(self.outUri.uri())
+			print "XXXXXXXXXXX"
+			outputLayer = qgis.core.QgsVectorLayer(publishUri.uri(), "", 'postgres')
+			outputLayer.startEditing()
+			inputLayer = qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres')
+			for feature in inputLayer.getFeatures():
+				# print feature
+				if outputLayer.addFeature(feature):
+					successfull_imports += 1
+				else:
+					failed_imports += 1
+			outputLayer.commitChanges()
+
+			# ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres'), publishUri.uri(), providerName, None, False, False, options )
 		except Exception as e:
 			ret = -1
 			errMsg = unicode( e )
@@ -348,10 +367,10 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 			return
 
 		# create spatial index
-		if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
-			self.db.connector.createSpatialIndex( (schema, table), geom )
+		# if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
+		# 	self.db.connector.createSpatialIndex( (schema, table), geom )
 
-		QMessageBox.information(self, self.tr("Publish to database"), self.tr("Publish was successful."))
+		QMessageBox.information(self, self.tr("Publish to database"), self.tr("Publish: successful :%d  failed: %d") % (successfull_imports, failed_imports))
 		return QDialog.accept(self)
 
 

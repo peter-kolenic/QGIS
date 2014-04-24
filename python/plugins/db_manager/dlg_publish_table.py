@@ -67,6 +67,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 		self.cboDatabase.clear()
 		# XXX
 		# pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
+		# DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
 		# negenerovat znova
 		# a vysomarit sa z toho, kde v strome su ulozene vyrobene konekcie (ak teda sa mozeme spolahnut na to, ze su populated, co mozno nie)
 		# urobit funkciu vrat vsetky db konekcie do niekam, tu to fakt nema co robit
@@ -127,7 +128,10 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 		schema = self.schemas[self.cboSchema.currentText()]
 
 		tables = schema.tables()
+		skipTableUri = self.inputTable.uri().uri()
 		for table in tables:
+			if table.uri().uri() == skipTableUri:
+				continue
 			self.tableName2table[table.name] = table
 			self.cboTable.addItem(table.name)
 

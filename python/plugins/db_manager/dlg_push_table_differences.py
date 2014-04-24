@@ -25,6 +25,7 @@ The content of this file is based on
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
+from subprocess import Popen, PIPE
 
 import qgis.core
 from qgis.utils import iface
@@ -142,6 +143,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			output.showMessage()
 			return
 
+		ret = 0
 		# publishDB = self.connections[dbi].database()
 		# override cursor
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
@@ -153,25 +155,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 		# publishUri.setDataSource(publishSchema, publishTable, geom)
 		pushDiffUri = self.tableName2table[pushDiffTable].uri()
+		pg_inputTable = pg_comparator_connect_string_for_uri(self.inputTable.uri())
+		pg_outputTable = pg_comparator_connect_string_for_uri(pushDiffUri)
 
-		successfull_imports = 0
-		failed_imports = 0
-		ret = 0
 		try:
-			# do the sync!
-			outputLayer = qgis.core.QgsVectorLayer(pushDiffUri.uri(), "", 'postgres')
-			outputLayer.startEditing()
-			inputLayer = qgis.core.QgsVectorLayer(self.inputTable.uri().uri(), "", 'postgres')
-			for feature in inputLayer.getFeatures():
-				# print feature
-				if outputLayer.addFeature(feature):
-					successfull_imports += 1
-				else:
-					failed_imports += 1
-			outputLayer.commitChanges()
-
-			# options = {}
-			# ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.inputTable.uri(), "", 'postgres'), pushDiffUri.uri(), inputProviderName, None, False, False, options )
+			p = Popen(["/usr/bin/pg_comparator",pg_inputTable,pg_outputTable],shell=False,stdout=PIPE,stderr=PIPE)
+			(outp,err) = p.communicate()
+			print "pg_comparator '%s' '%s' = %d" % (pg_inputTable, pg_outputTable, p.returncode)
+			print "output:",outp
+			print "error:",err
 		except Exception as e:
 			ret = -1
 			errMsg = unicode( e )
@@ -190,7 +182,22 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 ##		# create spatial index
 ##		# if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
 ##		# 	self.db.connector.createSpatialIndex( (schema, table), geom )
-
+		(successfull_imports, failed_imports) = (10,20)
 		QMessageBox.information(self, self.tr("Push differences"), self.tr("Push differences: successful :%d  failed: %d") % (successfull_imports, failed_imports))
 		return QDialog.accept(self)
+
+def pg_comparator_connect_string_for_uri(uri):
+	# XXX escale @ and " in password
+	s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"PK_UID\"" % {
+		"login":uri.username(),
+		"pass":	uri.password(),
+		"host":	uri.host(),
+		"port":	uri.port(),
+		"base":	uri.database(),
+		# "schema":uri.schema(),
+		# "table":uri.table()
+		"schema_table":uri.quotedTablename(),
+	}
+	print "PG_CONNECT:", s
+	return s
 

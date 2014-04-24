@@ -92,27 +92,6 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QCheckBox" name="checkBox_2">
-        <property name="text">
-         <string>INSERT</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="checkBox_3">
-        <property name="text">
-         <string>UPDATE</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="checkBox">
-        <property name="text">
-         <string>DELETE</string>
-        </property>
-       </widget>
-      </item>
      </layout>
     </widget>
    </item>

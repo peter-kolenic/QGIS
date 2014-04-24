@@ -48,20 +48,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 		# updates of UI
 		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.populateSchemas)
-		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.populateTables)
-		
-
-	# not used - for future reference
-##	def checkSupports(self):
-##		""" update options available for the current input layer """
-##		allowSpatial = self.db.connector.hasSpatialSupport()
-##		hasGeomType = self.inLayer and self.inLayer.hasGeometryType()
-##		isShapefile = self.inLayer and self.inLayer.providerType() == "ogr" and self.inLayer.storageType() == "ESRI Shapefile"
-##		self.chkGeomColumn.setEnabled(allowSpatial and hasGeomType)
-##		self.chkSourceSrid.setEnabled(allowSpatial and hasGeomType)
-##		self.chkTargetSrid.setEnabled(allowSpatial and hasGeomType)
-##		self.chkSinglePart.setEnabled(allowSpatial and hasGeomType and isShapefile)
-##		self.chkSpatialIndex.setEnabled(allowSpatial and hasGeomType)
+		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.populateTables)	
 
 	def populateDatabases(self):
 		self.cboDatabase.clear()
@@ -90,8 +77,9 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				except BaseError, e:
 					QMessageBox.warning( None, self.tr("Unable to connect"), unicode(e) )
 					return False
-			self.cboDatabase.addItem(connection.connectionName())
-			self.connections.append(connection)
+			if connection.database().connector.hasComparatorSupport():
+				self.cboDatabase.addItem(connection.connectionName())
+				self.connections.append(connection)
 		self.cboDatabase.setCurrentIndex(0 if self.connections else -1)
 
 

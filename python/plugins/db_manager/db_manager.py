@@ -178,6 +178,9 @@ class DBManager(QMainWindow):
 		if table is None:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
 			return
+		if not table.database().connector.hasComparatorSupport():
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("Selected table doesn't have pg_comparator supporting functions."))
+			return
 
 		from .dlg_push_table_differences import DlgPushTableDifferences
 		dlg = DlgPushTableDifferences(table, self)

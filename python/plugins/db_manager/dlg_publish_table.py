@@ -124,11 +124,19 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 
 		schema = self.schemas[self.cboSchema.currentText()]
 
-		tables = schema.tables()
 		skipTableUri = self.inputTable.uri().uri()
+		# inputTableFieldsDefs = [ f.definition() for f in self.inputTable.fields() ]
+		# sequencer ma ine meno
+		inputTableFieldsDefs = [ (f.name, f.dataType) for f in self.inputTable.fields() ]
+		tables = schema.tables()
 		for table in tables:
 			if table.uri().uri() == skipTableUri:
 				continue
+			fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
+			if fieldsDefs != inputTableFieldsDefs:
+				print "SKIP:", table.schemaName(), table.name
+				continue
+
 			self.tableName2table[table.name] = table
 			self.cboTable.addItem(table.name)
 

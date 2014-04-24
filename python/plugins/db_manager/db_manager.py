@@ -173,14 +173,14 @@ class DBManager(QMainWindow):
 
 		inLayer.deleteLater()
 
-	def publishActionSlot(self):
+	def pushTableDifferencesActionSlot(self):
 		table = self.tree.currentTable()
 		if table is None:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
 			return
 
-		from .dlg_publish_table import DlgPublishTable
-		dlg = DlgPublishTable(table, self)
+		from .dlg_push_table_differences import DlgPushTableDifferences
+		dlg = DlgPushTableDifferences(table, self)
 		dlg.exec_()
 
 	def runSqlWindow(self):
@@ -404,7 +404,7 @@ class DBManager(QMainWindow):
 		sep = self.menuTable.addSeparator(); sep.setObjectName("DB_Manager_TableMenu_placeholder"); sep.setVisible(False)
 		self.actionImport = self.menuTable.addAction( QIcon(":/db_manager/actions/import"), self.tr("&Import layer/file"), self.importActionSlot )
 		self.actionExport = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Export to file"), self.exportActionSlot )
-		self.actionPublish = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&publish to database"), self.publishActionSlot )
+		self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push differences"), self.pushTableDifferencesActionSlot )
 		self.menuTable.addSeparator()
 		#self.actionShowSystemTables = self.menuTable.addAction(self.tr("Show system tables/views"), self.showSystemTables)
 		#self.actionShowSystemTables.setCheckable(True)
@@ -416,4 +416,4 @@ class DBManager(QMainWindow):
 		self.toolBar.addAction( self.actionSqlWindow )
 		self.toolBar.addAction( self.actionImport )
 		self.toolBar.addAction( self.actionExport )
-		self.toolBar.addAction( self.actionPublish )
+		self.toolBar.addAction( self.actionPushTableDifferences )

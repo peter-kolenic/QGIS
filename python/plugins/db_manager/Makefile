@@ -13,4 +13,4 @@ UI_FILES=$(patsubst %.ui,%.py,$(foreach f,$(UI_FILES_IN),$(dir $f)ui_$(notdir $f
 all:	$(RC_FILES) $(UI_FILES)
 
 clean:
-	-rm $(UI_FILES) $(RC_FILES)
+	-rm $(UI_FILES) $(RC_FILES) *.pyc ui/*.pyc

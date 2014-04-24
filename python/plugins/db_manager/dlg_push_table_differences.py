@@ -29,9 +29,9 @@ from PyQt4.QtGui import *
 import qgis.core
 from qgis.utils import iface
 
-from .ui.ui_DlgPublishTable import Ui_DbManagerDlgPublishTable as Ui_Dialog
+from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences as Ui_Dialog
 
-class DlgPublishTable(QDialog, Ui_Dialog):
+class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def __init__(self, inputTable, parent=None):
 		QDialog.__init__(self, parent)
@@ -145,12 +145,12 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 
 	def accept(self):
 		dbi = self.cboDatabase.currentIndex()
-		publishSchema = self.cboSchema.currentText()
-		publishTable = self.cboTable.currentText()
-		if dbi <0 or not publishSchema or not publishTable:
+		pushDiffSchema = self.cboSchema.currentText()
+		pushDiffTable = self.cboTable.currentText()
+		if dbi <0 or not pushDiffSchema or not pushDiffTable:
 			output = qgis.gui.QgsMessageViewer()
-			output.setTitle( self.tr("Publish to database") )
-			output.setMessageAsPlainText( self.tr("Nowhere to publish to - select table") )
+			output.setTitle( self.tr("Push differences") )
+			output.setMessageAsPlainText( self.tr("Nowhere to push differences to - select table") )
 			output.showMessage()
 			return
 
@@ -164,15 +164,14 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 		# geom = self.tableName2table[publishTable].uri().geometryColumn()
 
 		# publishUri.setDataSource(publishSchema, publishTable, geom)
-		publishUri = self.tableName2table[publishTable].uri()
-		print publishUri.uri()
+		pushDiffUri = self.tableName2table[pushDiffTable].uri()
 
 		successfull_imports = 0
 		failed_imports = 0
 		ret = 0
 		try:
 			# do the sync!
-			outputLayer = qgis.core.QgsVectorLayer(publishUri.uri(), "", 'postgres')
+			outputLayer = qgis.core.QgsVectorLayer(pushDiffUri.uri(), "", 'postgres')
 			outputLayer.startEditing()
 			inputLayer = qgis.core.QgsVectorLayer(self.inputTable.uri().uri(), "", 'postgres')
 			for feature in inputLayer.getFeatures():
@@ -184,7 +183,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 			outputLayer.commitChanges()
 
 			# options = {}
-			# ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.inputTable.uri(), "", 'postgres'), publishUri.uri(), inputProviderName, None, False, False, options )
+			# ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.inputTable.uri(), "", 'postgres'), pushDiffUri.uri(), inputProviderName, None, False, False, options )
 		except Exception as e:
 			ret = -1
 			errMsg = unicode( e )
@@ -195,7 +194,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 
 		if ret != 0:
 			output = qgis.gui.QgsMessageViewer()
-			output.setTitle( self.tr("Publish to database") )
+			output.setTitle( self.tr("Push differences") )
 			output.setMessageAsPlainText( self.tr("Error %d\n%s") % (ret, errMsg) )
 			output.showMessage()
 			return
@@ -204,6 +203,6 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 ##		# if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
 ##		# 	self.db.connector.createSpatialIndex( (schema, table), geom )
 
-		QMessageBox.information(self, self.tr("Publish to database"), self.tr("Publish: successful :%d  failed: %d") % (successfull_imports, failed_imports))
+		QMessageBox.information(self, self.tr("Push differences"), self.tr("Push differences: successful :%d  failed: %d") % (successfull_imports, failed_imports))
 		return QDialog.accept(self)
 

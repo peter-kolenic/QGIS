@@ -92,10 +92,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 					return False
 			self.cboDatabase.addItem(connection.connectionName())
 			self.connections.append(connection)
-		if self.connections:
-			self.cboDatabase.setCurrentIndex(0)
-		else:
-			self.cboDatabase.setCurrentIndex(-1)
+		self.cboDatabase.setCurrentIndex(0 if self.connections else -1)
 
 
 	def populateSchemas(self):
@@ -115,7 +112,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 			for schema in schemas:
 				self.cboSchema.addItem(schema.name)
 				self.schemas[schema.name] = schema
-		self.cboSchema.setCurrentIndex(self.schemas and 0 or -1)
+		self.cboSchema.setCurrentIndex(0 if self.schemas else -1)
 
 	def populateTables(self):
 		self.cboTable.clear()
@@ -135,7 +132,7 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 			self.tableName2table[table.name] = table
 			self.cboTable.addItem(table.name)
 
-		self.cboTable.setCurrentIndex(tables and 0 or -1)
+		self.cboTable.setCurrentIndex(0 if tables else -1)
 
 
 	def accept(self):

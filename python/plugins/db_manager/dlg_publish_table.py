@@ -4,12 +4,13 @@
 /***************************************************************************
 Name                 : DB Manager
 Description          : Database manager plugin for QGIS
-Date                 : Oct 13, 2011
-copyright            : (C) 2011 by Giuseppe Sucameli
-email                : brush.tyler@gmail.com
+Date                 : Apr 24, 2014
+copyright            : (C) 2014 by Peter Kolenic
+email                : peter.kolenic@gmail.com
 
 The content of this file is based on
-- PG_Manager by Martin Dobias (GPLv2 license)
+- DB_Manager by Giuseppe Sucameli (GPLv2 license)
+  which is based on: PG_Manager by Martin Dobias (GPLv2 license)
  ***************************************************************************/
 
 /***************************************************************************
@@ -32,313 +33,139 @@ from .ui.ui_DlgPublishTable import Ui_DbManagerDlgPublishTable as Ui_Dialog
 
 class DlgPublishTable(QDialog, Ui_Dialog):
 
-	HAS_INPUT_MODE, ASK_FOR_INPUT_MODE = range(2)
-
-	def __init__(self, inLayer, outDb, outUri, parent=None):
+	def __init__(self, inputTable, parent=None):
 		QDialog.__init__(self, parent)
-		self.inLayer = inLayer
-		self.db = outDb
-		self.outUri = outUri
+		self.inputTable = inputTable
+
 		self.setupUi(self)
 
 		self.default_pk = "id"
 		self.default_geom = "geom"
 
-		self.mode = self.ASK_FOR_INPUT_MODE if self.inLayer is None else self.HAS_INPUT_MODE
-
-		# used to delete the inlayer whether created inside this dialog
-		self.inLayerMustBeDestroyed = False
-
+		self.populateDatabases()
 		self.populateSchemas()
 		self.populateTables()
-##		self.populateLayers()
-		self.populateEncodings()
 
 		# updates of UI
-		self.setupWorkingMode( self.mode )
+		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.populateSchemas)
 		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.populateTables)
+		
 
-
-
-	def setupWorkingMode(self, mode):
-		""" hide the widget to select a layer/file if the input layer is already set """
-##		self.wdgInput.setVisible( mode == self.ASK_FOR_INPUT_MODE )
-		self.resize( 450, 350 )
-
-		self.cboTable.setEditText(self.outUri.table())
-
-		if mode == self.ASK_FOR_INPUT_MODE:
-			pass
-##			QObject.connect( self.btnChooseInputFile, SIGNAL("clicked()"), self.chooseInputFile )
-##			#QObject.connect( self.cboInputLayer.lineEdit(), SIGNAL("editingFinished()"), self.updateInputLayer )
-##			QObject.connect( self.cboInputLayer, SIGNAL("editTextChanged(const QString &)"), self.inputPathChanged )
-##			#QObject.connect( self.cboInputLayer, SIGNAL("currentIndexChanged(int)"), self.updateInputLayer )
-##			QObject.connect( self.btnUpdateInputLayer, SIGNAL("clicked()"), self.updateInputLayer )
-		else:
-			# set default values
-			pk = self.outUri.keyColumn()
-##			self.editPrimaryKey.setText(pk if pk != "" else self.default_pk)
-			if self.inLayer.hasGeometryType():
-				geom = self.outUri.geometryColumn()
-##				self.editGeomColumn.setText(geom if geom != "" else self.default_geom)
-
-			inCrs = self.inLayer.crs()
-			srid = inCrs.postgisSrid() if inCrs.isValid() else 4236
-##			self.editSourceSrid.setText( "%s" % srid )
-##			self.editTargetSrid.setText( "%s" % srid )
-
-			self.checkSupports()
-
-	def checkSupports(self):
-		""" update options available for the current input layer """
-		allowSpatial = self.db.connector.hasSpatialSupport()
-		hasGeomType = self.inLayer and self.inLayer.hasGeometryType()
-		isShapefile = self.inLayer and self.inLayer.providerType() == "ogr" and self.inLayer.storageType() == "ESRI Shapefile"
+	# not used - for future reference
+##	def checkSupports(self):
+##		""" update options available for the current input layer """
+##		allowSpatial = self.db.connector.hasSpatialSupport()
+##		hasGeomType = self.inLayer and self.inLayer.hasGeometryType()
+##		isShapefile = self.inLayer and self.inLayer.providerType() == "ogr" and self.inLayer.storageType() == "ESRI Shapefile"
 ##		self.chkGeomColumn.setEnabled(allowSpatial and hasGeomType)
 ##		self.chkSourceSrid.setEnabled(allowSpatial and hasGeomType)
 ##		self.chkTargetSrid.setEnabled(allowSpatial and hasGeomType)
 ##		self.chkSinglePart.setEnabled(allowSpatial and hasGeomType and isShapefile)
 ##		self.chkSpatialIndex.setEnabled(allowSpatial and hasGeomType)
 
-
-
-##	def populateLayers(self):
-##		self.cboInputLayer.clear()
-##		for index, layer in enumerate( iface.legendInterface().layers() ):
-##			# TODO: add import raster support!
-##			if layer.type() == qgis.core.QgsMapLayer.VectorLayer:
-##				self.cboInputLayer.addItem( layer.name(), index )
-
-	def deleteInputLayer(self):
-		""" unset the input layer, then destroy it but only if it was created from this dialog """
-		if self.mode == self.ASK_FOR_INPUT_MODE and self.inLayer:
-			if self.inLayerMustBeDestroyed:
-				self.inLayer.deleteLater()
-			self.inLayer = None
-			self.inLayerMustBeDestroyed = False
-			return True
-		return False
-
-	def chooseInputFile(self):
-		vectorFormats = qgis.core.QgsProviderRegistry.instance().fileVectorFilters()
-		# get last used dir and format
-		settings = QSettings()
-		lastDir = settings.value("/db_manager/lastUsedDir", "")
-		lastVectorFormat = settings.value("/UI/lastVectorFileFilter", "")
-		# ask for a filename
-		(filename, lastVectorFormat) = QFileDialog.getOpenFileNameAndFilter(self, self.tr("Choose the file to import"), lastDir, vectorFormats, lastVectorFormat)
-		if filename == "":
-			return
-		# store the last used dir and format
-		settings.setValue("/db_manager/lastUsedDir", QFileInfo(filename).filePath())
-		settings.setValue("/UI/lastVectorFileFilter", lastVectorFormat)
-
-##		self.cboInputLayer.setEditText( filename )
-
-##	def inputPathChanged(self, path):
-##		if self.cboInputLayer.currentIndex() < 0:
-##			return
-##		self.cboInputLayer.blockSignals(True)
-##		self.cboInputLayer.setCurrentIndex( -1 )
-##		self.cboInputLayer.setEditText( path )
-##		self.cboInputLayer.blockSignals(False)
-
-	def updateInputLayer(self):
-		return 
-###
-		""" create the input layer and update available options """
-		if self.mode != self.ASK_FOR_INPUT_MODE:
-			return
-
-		self.deleteInputLayer()
-
-		index = self.cboInputLayer.currentIndex()
-		if index < 0:
-			filename = self.cboInputLayer.currentText()
-			if filename == "":
-				return False
-
-			layerName = QFileInfo(filename).completeBaseName()
-			layer = qgis.core.QgsVectorLayer(filename, layerName, "ogr")
-			if not layer.isValid() or layer.type() != qgis.core.QgsMapLayer.VectorLayer:
-				layer.deleteLater()
-				return False
-
-			self.inLayer = layer
-			self.inLayerMustBeDestroyed = True
-
-		else:
-			legendIndex = self.cboInputLayer.itemData( index )
-			self.inLayer = iface.legendInterface().layers()[ legendIndex ]
-			self.inLayerMustBeDestroyed = False
-
-		# update the output table name
-		self.cboTable.setEditText(self.inLayer.name())
-
-		self.checkSupports()
-		return True
-
-
 	def populateDatabases(self):
-		self.cboDalabase.clear()
-		# XXX self.db won't work - it is db of selected table
+		self.cboDatabase.clear()
+		# XXX
+		# pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
+		# negenerovat znova
+		# a vysomarit sa z toho, kde v strome su ulozene vyrobene konekcie (ak teda sa mozeme spolahnut na to, ze su populated, co mozno nie)
+		# urobit funkciu vrat vsetky db konekcie do niekam, tu to fakt nema co robit
+		# a najlepsie populivat naraz, nie opakovane (co ak remote konekcia a 100000 tabuliek ?)
+
+		# alebo, mozno urobit miesto 3 combobox-ov strom kompatibilnych tabuliek (ak by napriklad 10000 DB konekcii, aby sa nepopulovali
+		# naraz - podobne ako db_manager.tree (myslim ze sa nepopuluju naraz ale on demand)
+
+		# import je tu kvoli poznamke vyssie - nech potom nezostava 
+		from db_plugins import createDbPlugin
+		self.connections = []
+		dbpluginclass = createDbPlugin( "postgis" ) # ? naozaj len postgis ? neprejst radsej vsteky pluginy ?
+		for connection in dbpluginclass.connections():
+			if connection.database() == None:
+				# connect to database
+				try:
+					if not connection.connect():
+						print "can't connect to ", connection
+						# return False
+				except BaseError, e:
+					QMessageBox.warning( None, self.tr("Unable to connect"), unicode(e) )
+					return False
+			self.cboDatabase.addItem(connection.connectionName())
+			self.connections.append(connection)
+		if self.connections:
+			self.cboDatabase.setCurrentIndex(0)
+		else:
+			self.cboDatabase.setCurrentIndex(-1)
 
 
 	def populateSchemas(self):
-		if not self.db:
-			return
-
 		self.cboSchema.clear()
-		schemas = self.db.schemas()
-		if schemas == None:
-			self.hideSchemas()
-			return
+		self.schemas = {}
+		dbi = self.cboDatabase.currentIndex()
+		if dbi >= 0:
+			db = self.connections[dbi].database()
 
-		index = -1
-		for schema in schemas:
-			self.cboSchema.addItem(schema.name)
-			if schema.name == self.outUri.schema():
-				index = self.cboSchema.count()-1
-		self.cboSchema.setCurrentIndex(index)
+			schemas = db.schemas()
+			if schemas == None:
+				self.self.cboSchema.setEnabled(False)
+				return
+			else:
+				self.cboSchema.setEnabled(True)
 
-	def hideSchemas(self):
-		self.cboSchema.setEnabled(False)
+			for schema in schemas:
+				self.cboSchema.addItem(schema.name)
+				self.schemas[schema.name] = schema
+		self.cboSchema.setCurrentIndex(self.schemas and 0 or -1)
 
 	def populateTables(self):
-		if not self.db:
+		self.cboTable.clear()
+		self.tableName2table = {}
+		schi = self.cboSchema.currentIndex()
+		if not self.connections or not self.schemas or schi <0:
+			self.cboTable.setCurrentIndex(-1)
 			return
 
-		currentText = self.cboTable.currentText()
+		schema = self.schemas[self.cboSchema.currentText()]
 
-		schemas = self.db.schemas()
-		if schemas != None:
-			schema_name = self.cboSchema.currentText()
-			matching_schemas = filter(lambda x: x.name == schema_name, schemas)
-			tables = matching_schemas[0].tables() if len(matching_schemas) > 0 else []
-		else:
-			tables = self.db.tables()
-
-		self.cboTable.clear()
+		tables = schema.tables()
 		for table in tables:
+			self.tableName2table[table.name] = table
 			self.cboTable.addItem(table.name)
 
-		self.cboTable.setEditText(currentText)
+		self.cboTable.setCurrentIndex(tables and 0 or -1)
 
-	def populateEncodings(self):
-		encodings = ['ISO-8859-1', 'ISO-8859-2', 'UTF-8', 'CP1250']
-##		for enc in encodings:
-##			self.cboEncoding.addItem(enc)
-##		self.cboEncoding.setCurrentIndex(2)
 
 	def accept(self):
-###		if self.mode == self.ASK_FOR_INPUT_MODE:
-###			# create the input layer (if not already done) and
-###			# update available options w/o changing the tablename!
-###			self.cboTable.blockSignals(True)
-###			table = self.cboTable.currentText()
-###			self.updateInputLayer()
-###			self.cboTable.setEditText(table)
-###			self.cboTable.blockSignals(False)
-###
-###		# sanity checks
-###		if self.inLayer is None:
-###			QMessageBox.information(self, self.tr("Import to database"), self.tr("Input layer missing or not valid"))
-###			return
-###
-###		if self.cboTable.currentText() == "":
-###			QMessageBox.information(self, self.tr("Import to database"), self.tr("Output table name is required"))
-###			return
-###
-###		if self.chkSourceSrid.isEnabled() and self.chkSourceSrid.isChecked():
-###			try:
-###				sourceSrid = self.editSourceSrid.text()
-###			except ValueError:
-###				QMessageBox.information(self, self.tr("Import to database"), self.tr("Invalid source srid: must be an integer"))
-###				return
-###
-###		if self.chkTargetSrid.isEnabled() and self.chkTargetSrid.isChecked():
-###			try:
-###				targetSrid = self.editTargetSrid.text()
-###			except ValueError:
-###				QMessageBox.information(self, self.tr("Import to database"), self.tr("Invalid target srid: must be an integer"))
-###				return
+		dbi = self.cboDatabase.currentIndex()
+		publishSchema = self.cboSchema.currentText()
+		publishTable = self.cboTable.currentText()
+		if dbi <0 or not publishSchema or not publishTable:
+			output = qgis.gui.QgsMessageViewer()
+			output.setTitle( self.tr("Publish to database") )
+			output.setMessageAsPlainText( self.tr("Nowhere to publish to - select table") )
+			output.showMessage()
+			return
 
+		# publishDB = self.connections[dbi].database()
 		# override cursor
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
-		publishUri = self.db.uri()  # XXX i need to populate database combobox first
-		print publishUri
+		# publishUri = publishDB.uri() 
+		# print publishUri.uri()
 
-		publishSchema = self.cboSchema.currentText()
-		publishTable = self.cboTable.currentText()
-		inputgeom = self.outUri.geometryColumn()
+		# geom = self.tableName2table[publishTable].uri().geometryColumn()
 
-		publishUri.setDataSource(publishSchema, publishTable, inputgeom)
-		print (publishSchema, publishTable, inputgeom)
+		# publishUri.setDataSource(publishSchema, publishTable, geom)
+		publishUri = self.tableName2table[publishTable].uri()
+		print publishUri.uri()
 
-
-
-###		# store current input layer crs and encoding, so I can restore it
-###		prevInCrs = self.inLayer.crs()
-###		prevInEncoding = self.inLayer.dataProvider().encoding()
-###
 		successfull_imports = 0
 		failed_imports = 0
+		ret = 0
 		try:
-###			schema = self.outUri.schema() if not self.cboSchema.isEnabled() else self.cboSchema.currentText()
-###			table = self.cboTable.currentText()
-###
-###			# get pk and geom field names from the source layer or use the
-###			# ones defined by the user
-#####			pk = self.outUri.keyColumn() if not self.chkPrimaryKey.isChecked() else self.editPrimaryKey.text()
-###
-###			if self.inLayer.hasGeometryType() and self.chkGeomColumn.isEnabled():
-###				geom = self.outUri.geometryColumn() if not self.chkGeomColumn.isChecked() else self.editGeomColumn.text()
-###				geom = geom if geom != "" else self.default_geom
-###			else:
-###				geom = ""
-###
-###			# get output params, update output URI
-###			self.outUri.setDataSource( schema, table, geom, "", pk )
-###			uri = self.outUri.uri()
-###
-			providerName = self.db.dbplugin().providerName()
-			print providerName
-###
-			options = {}
-###			if self.radCreate.isChecked() and self.chkDropTable.isChecked():
-###				options['overwrite'] = True
-#####			elif self.radAppend.isChecked():
-#####				options['append'] = True
-###			if self.chkSinglePart.isEnabled() and self.chkSinglePart.isChecked():
-###				options['forceSinglePartGeometryType'] = True
-###
-###			outCrs = None
-###			if self.chkTargetSrid.isEnabled() and self.chkTargetSrid.isChecked():
-###				targetSrid = int(self.editTargetSrid.text())
-###				outCrs = qgis.core.QgsCoordinateReferenceSystem(targetSrid)
-###
-###			# update input layer crs and encoding
-###			if self.chkSourceSrid.isEnabled() and self.chkSourceSrid.isChecked():
-###				sourceSrid = int(self.editSourceSrid.text())
-###				inCrs = qgis.core.QgsCoordinateReferenceSystem(sourceSrid)
-###				self.inLayer.setCrs( inCrs )
-###
-#####			if self.chkEncoding.isEnabled() and self.chkEncoding.isChecked():
-#####				enc = self.cboEncoding.currentText()
-#####				self.inLayer.setProviderEncoding( enc )
-
-
-
-			# do the import!
-###			ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( self.inLayer, uri, providerName, outCrs, False, False, options )
-			ret = 0
-			print repr(publishUri.uri())
-			print repr(self.outUri.uri())
-			print "XXXXXXXXXXX"
+			# do the sync!
 			outputLayer = qgis.core.QgsVectorLayer(publishUri.uri(), "", 'postgres')
 			outputLayer.startEditing()
-			inputLayer = qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres')
+			inputLayer = qgis.core.QgsVectorLayer(self.inputTable.uri().uri(), "", 'postgres')
 			for feature in inputLayer.getFeatures():
 				# print feature
 				if outputLayer.addFeature(feature):
@@ -347,16 +174,14 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 					failed_imports += 1
 			outputLayer.commitChanges()
 
-			# ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.outUri.uri(), "", 'postgres'), publishUri.uri(), providerName, None, False, False, options )
+			# options = {}
+			# ret, errMsg = qgis.core.QgsVectorLayerImport.importLayer( qgis.core.QgsVectorLayer(self.inputTable.uri(), "", 'postgres'), publishUri.uri(), inputProviderName, None, False, False, options )
 		except Exception as e:
 			ret = -1
 			errMsg = unicode( e )
 
 		finally:
-			# restore input layer crs and encoding
-###			self.inLayer.setCrs( prevInCrs )
-###			self.inLayer.setProviderEncoding( prevInEncoding )
-			# restore cursor
+
 			QApplication.restoreOverrideCursor()
 
 		if ret != 0:
@@ -366,24 +191,10 @@ class DlgPublishTable(QDialog, Ui_Dialog):
 			output.showMessage()
 			return
 
-		# create spatial index
-		# if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
-		# 	self.db.connector.createSpatialIndex( (schema, table), geom )
+##		# create spatial index
+##		# if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
+##		# 	self.db.connector.createSpatialIndex( (schema, table), geom )
 
 		QMessageBox.information(self, self.tr("Publish to database"), self.tr("Publish: successful :%d  failed: %d") % (successfull_imports, failed_imports))
 		return QDialog.accept(self)
 
-
-	def closeEvent(self, event):
-		# destroy the input layer instance but only if it was created
-		# from this dialog!
-		self.deleteInputLayer()
-		QDialog.closeEvent(self, event)
-
-
-if __name__ == '__main__':
-	import sys
-	a = QApplication(sys.argv)
-	dlg = DlgLoadData()
-	dlg.show()
-	sys.exit(a.exec_())

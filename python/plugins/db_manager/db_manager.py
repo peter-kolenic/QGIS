@@ -179,11 +179,8 @@ class DBManager(QMainWindow):
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
 			return
 
-		toPublishUri = table.uri()
-		db = self.tree.currentDatabase()
-
 		from .dlg_publish_table import DlgPublishTable
-		dlg = DlgPublishTable(None, db, toPublishUri, self)
+		dlg = DlgPublishTable(table, self)
 		dlg.exec_()
 
 	def runSqlWindow(self):

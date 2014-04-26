@@ -41,6 +41,10 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		QDialog.__init__(self, parent)
 		self.inputTable = inputTable
 
+		if not get_primarykey_for_table(self.inputTable):
+			QMessageBox.warning( None, self.tr("Table error"),self.tr("unable to push differences - table doesn't have primary key column"))
+			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
+
 		self.setupUi(self)
 		self.checkButton = QPushButton(_fromUtf8("Check"));
 		self.buttonBox.addButton(self.checkButton,QDialogButtonBox.ActionRole)
@@ -136,13 +140,13 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		skipTableUri = self.inputTable.uri().uri()
 		# inputTableFieldsDefs = [ f.definition() for f in self.inputTable.fields() ]
 		# sequencer ma ine meno
-		inputTableFieldsDefs = [ (f.name, f.dataType) for f in self.inputTable.fields() ]
+		inputTableFieldsDefs = [ (f.name, f.dataType, f.primaryKey ) for f in self.inputTable.fields() ]
 		tables = schema.tables()
 		for table in tables:
 			if table.uri().uri() == skipTableUri:
 				continue
-			fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
-			if fieldsDefs != inputTableFieldsDefs:
+			fieldsDefs = [ (f.name, f.dataType, f.primaryKey) for f in table.fields() ]
+			if fieldsDefs != inputTableFieldsDefs or not [ f for f in fieldsDefs if f[2] ]:   # or maybe don't check here, but on "Check"
 				# print "SKIP:", table.schemaName(), table.name
 				continue
 
@@ -163,9 +167,9 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			output.showMessage()
 			return (None,None)
 
-		pushDiffUri = self.tableName2table[pushDiffTable].uri()
-		pg_inputTable = pg_comparator_connect_string_for_uri(self.inputTable.uri())
-		pg_outputTable = pg_comparator_connect_string_for_uri(pushDiffUri)
+		pushDiff = self.tableName2table[pushDiffTable]
+		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable)
+		pg_outputTable = pg_comparator_connect_string_for_table(pushDiff)
 		return (pg_inputTable,pg_outputTable)
 
 	def sync(self):
@@ -251,16 +255,22 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.plainTextEdit.setPlainText(outp)
 
 
-def pg_comparator_connect_string_for_uri(uri):
+def pg_comparator_connect_string_for_table(table):
 	# XXX escale @ and " in password
-	s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"PK_UID\"" % {
+	uri = table.uri()
+	pk = get_primarykey_for_table(table)
+	s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"%(pk)s\"" % {
 		"login":uri.username(),
 		"pass":	uri.password(),
 		"host":	uri.host(),
 		"port":	uri.port(),
 		"base":	uri.database(),
 		"schema_table":uri.quotedTablename(),
+		"pk": pk,
 	}
 	print "PG_CONNECT:", s
 	return s
 
+def get_primarykey_for_table(table):
+	keys = [ f.name for f in table.fields() if f.primaryKey ]
+	return keys[0] if keys else None 

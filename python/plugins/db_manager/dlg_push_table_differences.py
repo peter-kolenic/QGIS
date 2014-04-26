@@ -55,10 +55,6 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences", "Sync", None, QApplication.UnicodeUTF8))
 		self.connect(self.syncButton, SIGNAL("clicked()"), self.sync)
 
-
-		self.default_pk = "id"
-		self.default_geom = "geom"
-
 		self.populateDatabases()
 		self.populateSchemas()
 		self.populateTables()

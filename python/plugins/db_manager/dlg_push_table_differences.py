@@ -25,7 +25,7 @@ The content of this file is based on
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-from subprocess import Popen, PIPE
+from subprocess32 import Popen, PIPE, STDOUT
 
 import qgis.core
 # from qgis.utils import iface
@@ -34,6 +34,7 @@ from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences a
 from .ui.ui_DlgPushTableDifferences import _fromUtf8
 from .db_plugins.plugin import BaseError
 
+PG_COMPARE_MAX_RATIO=1
 class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def __init__(self, inputTable, parent=None):
@@ -174,13 +175,19 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 		retcode = 0
-		outp = ""
-		err = ""
+		outp = "pg_compare:\n"
+		outp2=""
+		err=""
+		errMsg = ""
 		try:
-			p = Popen(["/usr/bin/pg_comparator","-S","-D",pg_inputTable,pg_outputTable],shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True)
-			(outp,err) = p.communicate()
+			with Popen(["/usr/bin/pg_comparator","-S","-D","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
+				for l in iter(p.stdout.readline,''):
+					outp+=l
+					self.plainTextEdit.setPlainText(outp)
+				(outp2,err) = p.communicate()
 			retcode = p.returncode
 		except Exception as e:
+			print "Exc", e
 			retcode = -1
 			errMsg = unicode( e )
 
@@ -188,11 +195,13 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			QApplication.restoreOverrideCursor()
 
 		text = "pg_comparator push differences finished succesfully" if retcode == 0 else "ERROR: pg_comparator push differences returned errnum: %d" % retcode
-		text += "\nSTDOUT:\n"
-		text += outp
-		text += "\nSTDERR:\n"
-		text += err
-		self.plainTextEdit.setPlainText(text)
+		if outp2:
+			text += "\nSTDOUT:\n"
+			text += outp
+		if err:
+			text += "\nSTDERR:\n"
+			text += err
+		self.plainTextEdit.setPlainText(outp + text)
 		inserts = len([ l for l in outp.split("\n") if l.startswith("INSERT")])
 		updates = len([ l for l in outp.split("\n") if l.startswith("UPDATE")])
 		deletes = len([ l for l in outp.split("\n") if l.startswith("DELETE")])
@@ -208,13 +217,20 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 		retcode = 0
-		outp = ""
-		err = ""
-		try:
-			p = Popen(["/usr/bin/pg_comparator",pg_inputTable,pg_outputTable],shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True)
-			(outp,err) = p.communicate()
+		outp = "pg_compare:\n"
+		outp2=""
+		err=""
+		errMsg = ""
+		try: # XXX musi to ist v inom threade. jednak aby sa to dalo zabit, a dvak aby sa nieco 
+			# zobrazovalo (zjavne to ide v tom istom threade ako nejaka cast renderingu). potom budem moct citat error a output osobitne, a dam ine farby
+			with Popen(["/usr/bin/pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
+				for l in iter(p.stdout.readline,''):
+					outp+=l
+					self.plainTextEdit.setPlainText(outp)
+				(outp2,err) = p.communicate()
 			retcode = p.returncode
 		except Exception as e:
+			print "Exc", e
 			retcode = -1
 			errMsg = unicode( e )
 
@@ -225,12 +241,14 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		if retcode == 0:
 			self.syncButton.setEnabled(True)
 			# self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel)
-		text += "\nSTDOUT:\n"
-		text += outp
-		text += "\nSTDERR:\n"
-		text += err
-		# print text
-		self.plainTextEdit.setPlainText(text)
+		if outp2:
+			text += "\nSTDOUT:\n"
+			text += outp
+		if err:
+			text += "\nSTDERR:\n"
+			text += err
+		outp += text
+		self.plainTextEdit.setPlainText(outp)
 
 
 def pg_comparator_connect_string_for_uri(uri):
@@ -243,6 +261,6 @@ def pg_comparator_connect_string_for_uri(uri):
 		"base":	uri.database(),
 		"schema_table":uri.quotedTablename(),
 	}
-	# print "PG_CONNECT:", s
+	print "PG_CONNECT:", s
 	return s
 

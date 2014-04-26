@@ -101,7 +101,7 @@
       <enum>Qt::Horizontal</enum>
      </property>
      <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+      <set>QDialogButtonBox::Close</set>
      </property>
     </widget>
    </item>
@@ -131,21 +131,8 @@
     </hint>
    </hints>
   </connection>
-  <connection>
-   <sender>buttonBox</sender>
-   <signal>accepted()</signal>
-   <receiver>DbManagerDlgPushTableDifferences</receiver>
-   <slot>accept()</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>452</x>
-     <y>505</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>508</x>
-     <y>243</y>
-    </hint>
-   </hints>
-  </connection>
  </connections>
+ <slots>
+  <slot>clicked()</slot>
+ </slots>
 </ui>

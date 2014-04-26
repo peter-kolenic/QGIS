@@ -28,9 +28,11 @@ from PyQt4.QtGui import *
 from subprocess import Popen, PIPE
 
 import qgis.core
-from qgis.utils import iface
+# from qgis.utils import iface
 
 from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences as Ui_Dialog
+from .ui.ui_DlgPushTableDifferences import _fromUtf8
+from .db_plugins.plugin import BaseError
 
 class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
@@ -39,6 +41,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.inputTable = inputTable
 
 		self.setupUi(self)
+		self.checkButton = QPushButton(_fromUtf8("Check"));
+		self.buttonBox.addButton(self.checkButton,QDialogButtonBox.ActionRole)
+		self.checkButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences", "Check", None, QApplication.UnicodeUTF8))
+		self.connect(self.checkButton, SIGNAL("clicked()"), self.check)
+		self.syncButton = QPushButton(_fromUtf8("&Sync"));
+		self.buttonBox.addButton(self.syncButton,QDialogButtonBox.ActionRole)
+		self.syncButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences", "Sync", None, QApplication.UnicodeUTF8))
+		self.connect(self.syncButton, SIGNAL("clicked()"), self.sync)
+
 
 		self.default_pk = "id"
 		self.default_geom = "geom"
@@ -49,7 +60,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 		# updates of UI
 		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.populateSchemas)
-		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.populateTables)	
+		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.populateTables)
+
+		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
+		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
+		self.connect(self.cboTable, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
+		self.disableSyncButton()
+
+	def disableSyncButton(self):
+		self.syncButton.setEnabled(False)
 
 	def populateDatabases(self):
 		self.cboDatabase.clear()
@@ -73,11 +92,11 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				# connect to database
 				try:
 					if not connection.connect():
-						print "can't connect to ", connection
-						# return False
+						QMessageBox.warning( None, self.tr("Database connection error"),self.tr("Unable to connect to ") + connection.connectionName() )
+						continue
 				except BaseError, e:
-					QMessageBox.warning( None, self.tr("Unable to connect"), unicode(e) )
-					return False
+					QMessageBox.warning( None, self.tr("Unable to connect to ") + connection.connectionName(), unicode(e) )
+					continue
 			if connection.database().connector.hasComparatorSupport():
 				self.cboDatabase.addItem(connection.connectionName())
 				self.connections.append(connection)
@@ -123,7 +142,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				continue
 			fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
 			if fieldsDefs != inputTableFieldsDefs:
-				print "SKIP:", table.schemaName(), table.name
+				# print "SKIP:", table.schemaName(), table.name
 				continue
 
 			self.tableName2table[table.name] = table
@@ -131,8 +150,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
-
-	def accept(self):
+	# XXX fix this - should only return selected values, should not show error dialog. maybe some valid selection can be invariant
+	def get_pg_arguments(self):
 		dbi = self.cboDatabase.currentIndex()
 		pushDiffSchema = self.cboSchema.currentText()
 		pushDiffTable = self.cboTable.currentText()
@@ -141,50 +160,78 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			output.setTitle( self.tr("Push differences") )
 			output.setMessageAsPlainText( self.tr("Nowhere to push differences to - select table") )
 			output.showMessage()
-			return
+			return (None,None)
 
-		ret = 0
-		# publishDB = self.connections[dbi].database()
-		# override cursor
-		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
-
-		# publishUri = publishDB.uri() 
-		# print publishUri.uri()
-
-		# geom = self.tableName2table[publishTable].uri().geometryColumn()
-
-		# publishUri.setDataSource(publishSchema, publishTable, geom)
 		pushDiffUri = self.tableName2table[pushDiffTable].uri()
 		pg_inputTable = pg_comparator_connect_string_for_uri(self.inputTable.uri())
 		pg_outputTable = pg_comparator_connect_string_for_uri(pushDiffUri)
+		return (pg_inputTable,pg_outputTable)
 
+	def sync(self):
+		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
+		if not ( pg_inputTable and pg_outputTable):
+			return
+		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+		retcode = 0
+		outp = ""
+		err = ""
 		try:
-			p = Popen(["/usr/bin/pg_comparator",pg_inputTable,pg_outputTable],shell=False,stdout=PIPE,stderr=PIPE)
+			p = Popen(["/usr/bin/pg_comparator","-S","-D",pg_inputTable,pg_outputTable],shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True)
 			(outp,err) = p.communicate()
-			print "pg_comparator '%s' '%s' = %d" % (pg_inputTable, pg_outputTable, p.returncode)
-			print "output:",outp
-			print "error:",err
+			retcode = p.returncode
 		except Exception as e:
-			ret = -1
+			retcode = -1
 			errMsg = unicode( e )
 
 		finally:
-
 			QApplication.restoreOverrideCursor()
 
-		if ret != 0:
-			output = qgis.gui.QgsMessageViewer()
-			output.setTitle( self.tr("Push differences") )
-			output.setMessageAsPlainText( self.tr("Error %d\n%s") % (ret, errMsg) )
-			output.showMessage()
-			return
+		text = "pg_comparator push differences finished succesfully" if retcode == 0 else "ERROR: pg_comparator push differences returned errnum: %d" % retcode
+		text += "\nSTDOUT:\n"
+		text += outp
+		text += "\nSTDERR:\n"
+		text += err
+		self.plainTextEdit.setPlainText(text)
+		inserts = len([ l for l in outp.split("\n") if l.startswith("INSERT")])
+		updates = len([ l for l in outp.split("\n") if l.startswith("UPDATE")])
+		deletes = len([ l for l in outp.split("\n") if l.startswith("DELETE")])
 
-##		# create spatial index
-##		# if self.chkSpatialIndex.isEnabled() and self.chkSpatialIndex.isChecked():
-##		# 	self.db.connector.createSpatialIndex( (schema, table), geom )
-		(successfull_imports, failed_imports) = (10,20)
-		QMessageBox.information(self, self.tr("Push differences"), self.tr("Push differences: successful :%d  failed: %d") % (successfull_imports, failed_imports))
-		return QDialog.accept(self)
+		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") % 
+			(("No error" if retcode == 0 else ("Error[%d]" % retcode)),inserts,updates,deletes))
+		# return QDialog.accept(self) # XXX or continue with synch to another table ?
+
+	def check(self):
+		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
+		if not ( pg_inputTable and pg_outputTable):
+			return
+		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+		retcode = 0
+		outp = ""
+		err = ""
+		try:
+			p = Popen(["/usr/bin/pg_comparator",pg_inputTable,pg_outputTable],shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True)
+			(outp,err) = p.communicate()
+			retcode = p.returncode
+		except Exception as e:
+			retcode = -1
+			errMsg = unicode( e )
+
+		finally:
+			QApplication.restoreOverrideCursor()
+
+		text = "pg_comparator check finished succesfully" if retcode == 0 else "ERROR: pg_comparator check returned errnum: %d" % retcode
+		if retcode == 0:
+			self.syncButton.setEnabled(True)
+			# self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel)
+		text += "\nSTDOUT:\n"
+		text += outp
+		text += "\nSTDERR:\n"
+		text += err
+		# print text
+		self.plainTextEdit.setPlainText(text)
+
 
 def pg_comparator_connect_string_for_uri(uri):
 	# XXX escale @ and " in password
@@ -194,10 +241,8 @@ def pg_comparator_connect_string_for_uri(uri):
 		"host":	uri.host(),
 		"port":	uri.port(),
 		"base":	uri.database(),
-		# "schema":uri.schema(),
-		# "table":uri.table()
 		"schema_table":uri.quotedTablename(),
 	}
-	print "PG_CONNECT:", s
+	# print "PG_CONNECT:", s
 	return s
 

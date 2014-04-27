@@ -61,9 +61,6 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.connect(self.syncButton, SIGNAL("clicked()"), self.sync)
 
 		self.populateData()
-		# self.populateDatabases()
-		# self.populateSchemas()
-		# self.populateTables()
 
 		# updates of UI
 		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.populateSchemas)
@@ -82,108 +79,43 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.cboDatabase.setEnabled(enable)
 		self.cboSchema.setEnabled(enable)
 		self.cboTable.setEnabled(enable)
+		if enable:
+			QApplication.restoreOverrideCursor()
+		else:
+			QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+
 
 	def dataReady(self,data):
 		self.connections = data
 		self.emitText("data accepted")
-		self.emitText(repr(data))
+
+		# is no compatible tables found, close itself after message
+		if not data:
+			QMessageBox.warning( None, self.tr("Table error"),self.tr("no compatible table found"))
+			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
+
 		# enable all controls
 		self.enableControls(True)
 		self.populateDatabases()
 		self.populateSchemas()
 		self.populateTables()
 
+
 	def populateData(self):
 		# disable all controls
 		self.enableControls(False)
+		# looks like storing of scanner object and thread in self is needed, otherwise SIG11 (probably get released after exit of this function)
 		self.scanner = DBScanForPushCompatibleTables(self.inputTable,self.tr)
 		self.scanThread = QThread()
-		scanner = self.scanner
-		thread = self.scanThread # XXX 
-		scanner.moveToThread(thread)
-		scanner.emitText.connect(self.emitText)
-		scanner.dbDataCreated.connect(self.dataReady)
-		thread.started.connect(scanner.process)
-		# scanner.finished.connect(thread.quit)
-		# scanner.finished.connect(scanner.deleteLater)
-		# thread.finished.connect(thread.deleteLater)
-		thread.start()
+		self.scanner.moveToThread(self.scanThread)
+		self.scanner.emitText.connect(self.emitText)
+		self.scanner.dbDataCreated.connect(self.dataReady)
+		self.scanThread.started.connect(self.scanner.process)
+		# self.scanner.finished.connect(self.scanThread.quit)
+		# self.scanner.finished.connect(self.scanner.deleteLater)
+		# self.scanThread.finished.connect(self.scanThread.deleteLater)
+		self.scanThread.start()
 		# sleep(10)
-
-		# # XXX
-		# # pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
-		# # DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
-		# # negenerovat znova
-		# # a vysomarit sa z toho, kde v strome su ulozene vyrobene konekcie (ak teda sa mozeme spolahnut na to, ze su populated, co mozno nie)
-		# # urobit funkciu vrat vsetky db konekcie do niekam, tu to fakt nema co robit
-		# # a najlepsie populivat naraz, nie opakovane (co ak remote konekcia a 100000 tabuliek ?)
-
-		# # alebo, mozno urobit miesto 3 combobox-ov strom kompatibilnych tabuliek (ak by napriklad 10000 DB konekcii, aby sa nepopulovali
-		# # naraz - podobne ako db_manager.tree (myslim ze sa nepopuluju naraz ale on demand)
-
-		# # data is stored in self.connections, in structure:
-		# #	self.connection = [ (connection, schemas )]
-		# #                                    schemas = { name: (schema, compatible_tables) }
-		# #                                                               compatible_tables = { table_name: (table, commonPK) }
-		# inputTableUri = self.inputTable.uri().uri()
-		# inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
-		# 																								 # differs, and is part of fields default value
-		# inputTablePKs = frozenset([ f.name for f in self.inputTable.fields() if f.primaryKey])
-		# self.connections = []
-		# dbpluginclass = createDbPlugin( "postgis" )
-		# for connection in dbpluginclass.connections():
-		# 	self.emitText(self.tr("Checking DB connection %s") % connection.connectionName())
-		# 	if connection.database() == None:
-		# 		# connect to database
-		# 		try:
-		# 			if not connection.connect():
-		# 				# QMessageBox.warning( None, self.tr("Database connection error"),self.tr("Unable to connect to ") + connection.connectionName() )
-		# 				self.emitText(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
-		# 				continue
-		# 		except BaseError, e:
-		# 			# QMessageBox.warning( None, self.tr("Unable to connect to ") + connection.connectionName(), unicode(e) )
-		# 			self.emitText(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
-		# 			continue
-		# 	if connection.database().connector.hasComparatorSupport():
-		# 		schemas = {}
-		# 		db = connection.database()
-		# 		schemas_ = db.schemas()
-		# 		for schema in schemas_:
-		# 			self.emitText(self.tr("Checking schema %s in connection %s") % (schema.name,connection.connectionName()))
-		# 			tables = {}
-		# 			tables_ = schema.tables()
-		# 			for table in tables_:
-		# 				if table.uri().uri() == inputTableUri:
-		# 					self.emitText(self.tr("Table %s is source table - skipping") % table.name)
-		# 					continue # skip source
-		# 				fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
-		# 				if fieldsDefs != inputTableFieldsDefs:
-		# 					self.emitText(self.tr("Table %s is not compatible - skipping") % table.name)
-		# 					continue
-		# 				tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])	
-		# 				commonPKs = set(tablePKs.intersection(inputTablePKs))
-		# 				# if the check of primaryKey were done on "Check",
-		# 				# user would be able to find out when the table is ill created
-		# 				if not commonPKs:
-		# 					self.emitText(self.tr("WARNING: Table %s is fields-compatible, but has no common primary key with source table - skipping") % table.name)
-		# 					continue
-		# 				tables[table.name] = (table,commonPKs.pop())
-		# 				self.emitText(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name,schema.name,connection.connectionName()))
-		# 			if tables:
-		# 				schemas[schema.name] = (schema, tables)
-		# 			else:
-		# 				self.emitText(self.tr("Skipping schema %s, no compatible table") % schema.name)
-		# 		if schemas:
-		# 			self.connections.append((connection, schemas))
-		# 		else:
-		# 			self.emitText(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
-		# 	else:
-		# 		self.emitText(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
-		# if not self.connections:
-		# 	self.emitText(self.tr("No compatible tables found in any database"))
-		# self.emitText(self.tr("Scanning for tables finished."))
-		# self.emitText("")
-
 
 	def disableSyncButton(self):
 		self.syncButton.setEnabled(False)
@@ -224,12 +156,12 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.cboTable.addItem(table)
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
-	# XXX fix this - should only return selected values, should not show error dialog. maybe some valid selection can be invariant
 	def get_pg_arguments(self):
 		dbi = self.cboDatabase.currentIndex()
 		pushDiffSchema = self.cboSchema.currentText()
 		pushDiffTableName = self.cboTable.currentText()
 		if dbi <0 or not pushDiffSchema or not pushDiffTableName:
+			# should never happen. valid selection is invariant
 			output = qgis.gui.QgsMessageViewer()
 			output.setTitle( self.tr("Push differences") )
 			output.setMessageAsPlainText( self.tr("Nowhere to push differences to - select table") )
@@ -310,8 +242,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		outp2=""
 		err=""
 		errMsg = ""
-		try: # XXX musi to ist v inom threade. jednak aby sa to dalo zabit, a dvak aby sa nieco 
-			# zobrazovalo (zjavne to ide v tom istom threade ako nejaka cast renderingu). potom budem moct citat error a output osobitne, a dam ine farby
+		try: 	# XXX musi to ist v inom threade. jednak aby sa to dalo zabit, a dvak aby sa nieco 
+				# zobrazovalo (zjavne to ide v tom istom threade ako nejaka cast renderingu). potom budem moct citat error a output osobitne, a dam ine farby
 			with Popen(["pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
 				for l in iter(p.stdout.readline,''):
 					outp+=l
@@ -350,6 +282,22 @@ class DBScanForPushCompatibleTables(QObject):
 
 	@pyqtSlot()
 	def process(self):	# ,inputTable,tr): -> no state
+		# XXX
+		# pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
+		# DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
+		# negenerovat znova
+		# a vysomarit sa z toho, kde v strome su ulozene vyrobene konekcie (ak teda sa mozeme spolahnut na to, ze su populated, co mozno nie)
+		# urobit funkciu vrat vsetky db konekcie do niekam, tu to fakt nema co robit
+		# a najlepsie populivat naraz, nie opakovane (co ak remote konekcia a 100000 tabuliek ?)
+
+		# alebo, mozno urobit miesto 3 combobox-ov strom kompatibilnych tabuliek (ak by napriklad 10000 DB konekcii, aby sa nepopulovali
+		# naraz - podobne ako db_manager.tree (myslim ze sa nepopuluju naraz ale on demand)
+
+		# data is stored in self.connections, in structure:
+		#	self.connection = [ (connection, schemas )]
+		#                                    schemas = { name: (schema, compatible_tables) }
+		#                                                               compatible_tables = { table_name: (table, commonPK) }
+
 		inputTableUri = self.inputTable.uri().uri()
 		inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
 																										 # differs, and is part of fields default value

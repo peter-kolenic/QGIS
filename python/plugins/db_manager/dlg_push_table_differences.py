@@ -125,7 +125,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 							self.emitText(self.tr("Table %s is not compatible - skipping") % table.name)
 							continue
 						tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])	
-						commonPKs = tablePKs.intersection(inputTablePKs):
+						commonPKs = set(tablePKs.intersection(inputTablePKs))
 						# if the check of primaryKey were done on "Check",
 						# user would be able to find out when the table is ill created
 						if not commonPKs:
@@ -185,15 +185,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		except KeyError, e:
 			return
 		for table in tables.keys():
-			self.cboTable.addItem(table[0])
+			self.cboTable.addItem(table)
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
 	# XXX fix this - should only return selected values, should not show error dialog. maybe some valid selection can be invariant
 	def get_pg_arguments(self):
 		dbi = self.cboDatabase.currentIndex()
 		pushDiffSchema = self.cboSchema.currentText()
-		pushDiffTable = self.cboTable.currentText()
-		if dbi <0 or not pushDiffSchema or not pushDiffTable:
+		pushDiffTableName = self.cboTable.currentText()
+		if dbi <0 or not pushDiffSchema or not pushDiffTableName:
 			output = qgis.gui.QgsMessageViewer()
 			output.setTitle( self.tr("Push differences") )
 			output.setMessageAsPlainText( self.tr("Nowhere to push differences to - select table") )
@@ -215,8 +215,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			print "PG_CONNECT:", s
 			return s
 
-		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTable][0]
-		pk = self.connections[dbi][1][pushDiffSchema][1][pushDiffTable][1]
+		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
+		pk = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1]
 		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable,pk)
 		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable,pk)
 		return (pg_inputTable,pg_outputTable)

@@ -33,6 +33,7 @@ import qgis.core
 from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences as Ui_Dialog
 from .ui.ui_DlgPushTableDifferences import _fromUtf8
 from .db_plugins.plugin import BaseError
+from db_plugins import createDbPlugin # if db_manager.tree is used, remove this
 
 PG_COMPARE_MAX_RATIO=1
 class DlgPushTableDifferences(QDialog, Ui_Dialog):
@@ -55,6 +56,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences", "Sync", None, QApplication.UnicodeUTF8))
 		self.connect(self.syncButton, SIGNAL("clicked()"), self.sync)
 
+		self.populateData()
 		self.populateDatabases()
 		self.populateSchemas()
 		self.populateTables()
@@ -68,11 +70,10 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.connect(self.cboTable, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
 		self.disableSyncButton()
 
-	def disableSyncButton(self):
-		self.syncButton.setEnabled(False)
+	def emitText(self, text, clear=False):
+		[self.plainTextEdit.setPlainText,self.plainTextEdit.appendPlainText][0 if clear else 1](text)
 
-	def populateDatabases(self):
-		self.cboDatabase.clear()
+	def populateData(self):
 		# XXX
 		# pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
 		# DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
@@ -84,71 +85,104 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		# alebo, mozno urobit miesto 3 combobox-ov strom kompatibilnych tabuliek (ak by napriklad 10000 DB konekcii, aby sa nepopulovali
 		# naraz - podobne ako db_manager.tree (myslim ze sa nepopuluju naraz ale on demand)
 
-		# import je tu kvoli poznamke vyssie - nech potom nezostava 
-		from db_plugins import createDbPlugin
+		# data is stored in self.connections, in structure:
+		#	self.connection = [ (connection, schemas )]
+		#                                    schemas = { name: (schema, compatible_tables) }
+		#                                                               compatible_tables = { table_name: table }
+		inputTableUri = self.inputTable.uri().uri()
+		inputTableFieldsDefs = [ (f.name, f.dataType, f.primaryKey ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
+																										 # differs, and is part of fields default value
 		self.connections = []
-		dbpluginclass = createDbPlugin( "postgis" ) # ? naozaj len postgis ? neprejst radsej vsteky pluginy ?
+		dbpluginclass = createDbPlugin( "postgis" )
 		for connection in dbpluginclass.connections():
+			self.emitText(self.tr("Checking DB connection %s") % connection.connectionName())
 			if connection.database() == None:
 				# connect to database
 				try:
 					if not connection.connect():
-						QMessageBox.warning( None, self.tr("Database connection error"),self.tr("Unable to connect to ") + connection.connectionName() )
+						# QMessageBox.warning( None, self.tr("Database connection error"),self.tr("Unable to connect to ") + connection.connectionName() )
+						self.emitText(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
 						continue
 				except BaseError, e:
-					QMessageBox.warning( None, self.tr("Unable to connect to ") + connection.connectionName(), unicode(e) )
+					# QMessageBox.warning( None, self.tr("Unable to connect to ") + connection.connectionName(), unicode(e) )
+					self.emitText(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
 					continue
 			if connection.database().connector.hasComparatorSupport():
-				self.cboDatabase.addItem(connection.connectionName())
-				self.connections.append(connection)
-		self.cboDatabase.setCurrentIndex(0 if self.connections else -1)
+				schemas = {}
+				db = connection.database()
+				schemas_ = db.schemas()
+				for schema in schemas_:
+					self.emitText(self.tr("Checking schema %s in connection %s") % (schema.name,connection.connectionName()))
+					tables = {}
+					tables_ = schema.tables()
+					for table in tables_:
+						if table.uri().uri() == inputTableUri:
+							self.emitText(self.tr("Table %s is source table - skipping") % table.name)
+							continue # skip source 
+						fieldsDefs = [ (f.name, f.dataType, f.primaryKey) for f in table.fields() ]
+						if fieldsDefs != inputTableFieldsDefs:
+							self.emitText(self.tr("Table %s is not compatible - skipping") % table.name)
+							continue
+						if not [ f for f in fieldsDefs if f[2] ]:	# f[2] === primaryKey; if the check were done on "Check", 
+																	# user would be able to find out when the table is ill created
+																	# check that table has any primary key compatible with inputTable XXX
+							self.emitText(self.tr("WARNING: Table %s is compatible, but has no primaty key - skipping") % table.name)
+							continue
+						tables[table.name] = table
+						self.emitText(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name,schema.name,connection.connectionName()))
+					if tables:
+						schemas[schema.name] = (schema, tables)
+					else:
+						self.emitText(self.tr("Skipping schema %s, no compatible table") % schema.name)
+				if schemas:
+					self.connections.append((connection, schemas))
+				else:
+					self.emitText(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
+			else:
+				self.emitText(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
+		if not self.connections:
+			self.emitText(self.tr("No compatible tables found in any database"))
+		self.emitText(self.tr("Scanning for tables finished."))
+		self.emitText("")
 
+
+	def disableSyncButton(self):
+		self.syncButton.setEnabled(False)
+
+	def populateDatabases(self):
+		self.cboDatabase.clear()
+		for connection in [ c[0] for c in self.connections]:
+			self.cboDatabase.addItem(connection.connectionName())
+		self.cboDatabase.setCurrentIndex(0 if self.connections else -1)
 
 	def populateSchemas(self):
 		self.cboSchema.clear()
-		self.schemas = {}
 		dbi = self.cboDatabase.currentIndex()
 		if dbi >= 0:
-			db = self.connections[dbi].database()
-
-			schemas = db.schemas()
+			schemas = self.connections[dbi][1]
 			if schemas == None:
-				self.self.cboSchema.setEnabled(False)
+				self.cboSchema.setEnabled(False)
 				return
 			else:
 				self.cboSchema.setEnabled(True)
 
-			for schema in schemas:
-				self.cboSchema.addItem(schema.name)
-				self.schemas[schema.name] = schema
-		self.cboSchema.setCurrentIndex(0 if self.schemas else -1)
+			for schema in schemas.keys():
+				self.cboSchema.addItem(schema)
+			self.cboSchema.setCurrentIndex(0 if schemas else -1)
 
 	def populateTables(self):
 		self.cboTable.clear()
-		self.tableName2table = {}
 		schi = self.cboSchema.currentIndex()
-		if not self.connections or not self.schemas or schi <0:
+		if not self.connections or schi <0:
 			self.cboTable.setCurrentIndex(-1)
 			return
-
-		schema = self.schemas[self.cboSchema.currentText()]
-
-		skipTableUri = self.inputTable.uri().uri()
-		# inputTableFieldsDefs = [ f.definition() for f in self.inputTable.fields() ]
-		# sequencer ma ine meno
-		inputTableFieldsDefs = [ (f.name, f.dataType, f.primaryKey ) for f in self.inputTable.fields() ]
-		tables = schema.tables()
-		for table in tables:
-			if table.uri().uri() == skipTableUri:
-				continue
-			fieldsDefs = [ (f.name, f.dataType, f.primaryKey) for f in table.fields() ]
-			if fieldsDefs != inputTableFieldsDefs or not [ f for f in fieldsDefs if f[2] ]:   # or maybe don't check here, but on "Check"
-				# print "SKIP:", table.schemaName(), table.name
-				continue
-
-			self.tableName2table[table.name] = table
-			self.cboTable.addItem(table.name)
-
+		tables = None
+		try:
+			tables = self.connections[self.cboDatabase.currentIndex()][1][self.cboSchema.currentText()][1]
+		except KeyError, e:
+			return
+		for table in tables.keys():
+			self.cboTable.addItem(table)
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
 	# XXX fix this - should only return selected values, should not show error dialog. maybe some valid selection can be invariant
@@ -163,9 +197,9 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			output.showMessage()
 			return (None,None)
 
-		pushDiff = self.tableName2table[pushDiffTable]
+		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTable]
 		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable)
-		pg_outputTable = pg_comparator_connect_string_for_table(pushDiff)
+		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable)
 		return (pg_inputTable,pg_outputTable)
 
 	def sync(self):
@@ -180,12 +214,12 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		err=""
 		errMsg = ""
 		try:
-			with Popen(["/usr/bin/pg_comparator","-S","-D","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
+			with Popen(["pg_comparator","-S","-D","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
 				for l in iter(p.stdout.readline,''):
 					outp+=l
-					self.plainTextEdit.setPlainText(outp)
+					self.emitText(outp)
 				(outp2,err) = p.communicate()
-			retcode = p.returncode
+				retcode = p.returncode
 		except Exception as e:
 			print "Exc", e
 			retcode = -1
@@ -201,7 +235,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		if err:
 			text += "\nSTDERR:\n"
 			text += err
-		self.plainTextEdit.setPlainText(outp + text)
+		self.emitText(outp + text)
 		inserts = len([ l for l in outp.split("\n") if l.startswith("INSERT")])
 		updates = len([ l for l in outp.split("\n") if l.startswith("UPDATE")])
 		deletes = len([ l for l in outp.split("\n") if l.startswith("DELETE")])
@@ -223,12 +257,12 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		errMsg = ""
 		try: # XXX musi to ist v inom threade. jednak aby sa to dalo zabit, a dvak aby sa nieco 
 			# zobrazovalo (zjavne to ide v tom istom threade ako nejaka cast renderingu). potom budem moct citat error a output osobitne, a dam ine farby
-			with Popen(["/usr/bin/pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
+			with Popen(["pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
 				for l in iter(p.stdout.readline,''):
 					outp+=l
-					self.plainTextEdit.setPlainText(outp)
+					self.emitText(outp)
 				(outp2,err) = p.communicate()
-			retcode = p.returncode
+				retcode = p.returncode
 		except Exception as e:
 			print "Exc", e
 			retcode = -1
@@ -248,13 +282,13 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			text += "\nSTDERR:\n"
 			text += err
 		outp += text
-		self.plainTextEdit.setPlainText(outp)
+		self.emitText(outp)
 
 
 def pg_comparator_connect_string_for_table(table):
 	# XXX escale @ and " in password
 	uri = table.uri()
-	pk = get_primarykey_for_table(table)
+	pk = get_primarykey_for_table(table) # XXX need to return compatible primary key for both tables, both needed in calculation
 	s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"%(pk)s\"" % {
 		"login":uri.username(),
 		"pass":	uri.password(),
@@ -269,4 +303,16 @@ def pg_comparator_connect_string_for_table(table):
 
 def get_primarykey_for_table(table):
 	keys = [ f.name for f in table.fields() if f.primaryKey ]
-	return keys[0] if keys else None 
+	return keys[0] if keys else None
+
+def check_pg_comparator_presence():
+	retcode = 0
+	try: 
+		with Popen(["pg_comparator","--help"],shell=False) as p:
+			(outp2,err) = p.communicate()
+			retcode = p.returncode
+	except Exception as e:
+		retcode = -1
+	return retcode == 0
+
+

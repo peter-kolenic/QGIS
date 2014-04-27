@@ -33,6 +33,7 @@ from .db_tree import DBTree
 
 from .db_plugins.plugin import BaseError
 from .dlg_db_error import DlgDbError
+from .dlg_push_table_differences import check_pg_comparator_presence
 
 
 class DBManager(QMainWindow):
@@ -40,6 +41,7 @@ class DBManager(QMainWindow):
 	def __init__(self, iface, parent=None):
 		QMainWindow.__init__(self, parent)
 		self.setAttribute(Qt.WA_DeleteOnClose)
+		self.pushTableEnabled = check_pg_comparator_presence()
 		self.setupUi()
 		self.iface = iface
 
@@ -174,6 +176,9 @@ class DBManager(QMainWindow):
 		inLayer.deleteLater()
 
 	def pushTableDifferencesActionSlot(self):
+		if not self.pushTableEnabled:
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("Push table differences is disabled."))
+			return			
 		table = self.tree.currentTable()
 		if table is None:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
@@ -407,7 +412,8 @@ class DBManager(QMainWindow):
 		sep = self.menuTable.addSeparator(); sep.setObjectName("DB_Manager_TableMenu_placeholder"); sep.setVisible(False)
 		self.actionImport = self.menuTable.addAction( QIcon(":/db_manager/actions/import"), self.tr("&Import layer/file"), self.importActionSlot )
 		self.actionExport = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Export to file"), self.exportActionSlot )
-		self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push differences"), self.pushTableDifferencesActionSlot )
+		if self.pushTableEnabled:
+			self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push differences"), self.pushTableDifferencesActionSlot )
 		self.menuTable.addSeparator()
 		#self.actionShowSystemTables = self.menuTable.addAction(self.tr("Show system tables/views"), self.showSystemTables)
 		#self.actionShowSystemTables.setCheckable(True)
@@ -419,4 +425,5 @@ class DBManager(QMainWindow):
 		self.toolBar.addAction( self.actionSqlWindow )
 		self.toolBar.addAction( self.actionImport )
 		self.toolBar.addAction( self.actionExport )
-		self.toolBar.addAction( self.actionPushTableDifferences )
+		if self.pushTableEnabled:
+			self.toolBar.addAction( self.actionPushTableDifferences )

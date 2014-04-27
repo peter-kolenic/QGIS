@@ -42,7 +42,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		QDialog.__init__(self, parent)
 		self.inputTable = inputTable
 
-		if not get_primarykey_for_table(self.inputTable):
+		if not [ f for f in self.inputTable.fields() if f.primaryKey ]:
 			QMessageBox.warning( None, self.tr("Table error"),self.tr("unable to push differences - table doesn't have primary key column"))
 			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
 
@@ -88,10 +88,11 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		# data is stored in self.connections, in structure:
 		#	self.connection = [ (connection, schemas )]
 		#                                    schemas = { name: (schema, compatible_tables) }
-		#                                                               compatible_tables = { table_name: table }
+		#                                                               compatible_tables = { table_name: (table, commonPK) }
 		inputTableUri = self.inputTable.uri().uri()
-		inputTableFieldsDefs = [ (f.name, f.dataType, f.primaryKey ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
+		inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
 																										 # differs, and is part of fields default value
+		inputTablePKs = frozenset([ f.name for f in self.inputTable.fields() if f.primaryKey])
 		self.connections = []
 		dbpluginclass = createDbPlugin( "postgis" )
 		for connection in dbpluginclass.connections():
@@ -118,17 +119,19 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 					for table in tables_:
 						if table.uri().uri() == inputTableUri:
 							self.emitText(self.tr("Table %s is source table - skipping") % table.name)
-							continue # skip source 
-						fieldsDefs = [ (f.name, f.dataType, f.primaryKey) for f in table.fields() ]
+							continue # skip source
+						fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
 						if fieldsDefs != inputTableFieldsDefs:
 							self.emitText(self.tr("Table %s is not compatible - skipping") % table.name)
 							continue
-						if not [ f for f in fieldsDefs if f[2] ]:	# f[2] === primaryKey; if the check were done on "Check", 
-																	# user would be able to find out when the table is ill created
-																	# check that table has any primary key compatible with inputTable XXX
-							self.emitText(self.tr("WARNING: Table %s is compatible, but has no primaty key - skipping") % table.name)
+						tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])	
+						commonPKs = tablePKs.intersection(inputTablePKs):
+						# if the check of primaryKey were done on "Check",
+						# user would be able to find out when the table is ill created
+						if not commonPKs:
+							self.emitText(self.tr("WARNING: Table %s is fields-compatible, but has no common primary key with source table - skipping") % table.name)
 							continue
-						tables[table.name] = table
+						tables[table.name] = (table,commonPKs.pop())
 						self.emitText(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name,schema.name,connection.connectionName()))
 					if tables:
 						schemas[schema.name] = (schema, tables)
@@ -182,7 +185,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		except KeyError, e:
 			return
 		for table in tables.keys():
-			self.cboTable.addItem(table)
+			self.cboTable.addItem(table[0])
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
 	# XXX fix this - should only return selected values, should not show error dialog. maybe some valid selection can be invariant
@@ -197,9 +200,25 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			output.showMessage()
 			return (None,None)
 
-		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTable]
-		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable)
-		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable)
+		def pg_comparator_connect_string_for_table(table,pk):
+			# XXX escale @ and " in password
+			uri = table.uri()
+			s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"%(pk)s\"" % {
+				"login":uri.username(),
+				"pass":	uri.password(),
+				"host":	uri.host(),
+				"port":	uri.port(),
+				"base":	uri.database(),
+				"schema_table":uri.quotedTablename(),
+				"pk": pk,
+			}
+			print "PG_CONNECT:", s
+			return s
+
+		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTable][0]
+		pk = self.connections[dbi][1][pushDiffSchema][1][pushDiffTable][1]
+		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable,pk)
+		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable,pk)
 		return (pg_inputTable,pg_outputTable)
 
 	def sync(self):
@@ -283,23 +302,6 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			text += err
 		outp += text
 		self.emitText(outp)
-
-
-def pg_comparator_connect_string_for_table(table):
-	# XXX escale @ and " in password
-	uri = table.uri()
-	pk = get_primarykey_for_table(table) # XXX need to return compatible primary key for both tables, both needed in calculation
-	s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"%(pk)s\"" % {
-		"login":uri.username(),
-		"pass":	uri.password(),
-		"host":	uri.host(),
-		"port":	uri.port(),
-		"base":	uri.database(),
-		"schema_table":uri.quotedTablename(),
-		"pk": pk,
-	}
-	print "PG_CONNECT:", s
-	return s
 
 def get_primarykey_for_table(table):
 	keys = [ f.name for f in table.fields() if f.primaryKey ]

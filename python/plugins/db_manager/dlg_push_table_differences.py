@@ -45,6 +45,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		if not [ f for f in self.inputTable.fields() if f.primaryKey ]:
 			QMessageBox.warning( None, self.tr("Table error"),self.tr("unable to push differences - table doesn't have primary key column"))
 			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
+			return 
 
 		self.setupUi(self)
 		self.checkButton = QPushButton(_fromUtf8("Check"));
@@ -212,7 +213,6 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def checkFinished(self,success,inserts,updates,deletes):
 		self.enableControls(True)
-		# QApplication.restoreOverrideCursor()
 		if success:
 			self.syncButton.setEnabled(True)
 			self.printMessage(self.tr("Summary: inserts :%d  updates: %d  deletes: %d") % (inserts,updates,deletes))
@@ -243,7 +243,6 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def syncFinished(self,success,inserts,updates,deletes):
 		self.enableControls(True)
-		# QApplication.restoreOverrideCursor()
 		self.syncButton.setEnabled(False)
 		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") % 
 			("No error" if success else "Error",inserts,updates,deletes))

@@ -425,5 +425,3 @@ class DBManager(QMainWindow):
 		self.toolBar.addAction( self.actionSqlWindow )
 		self.toolBar.addAction( self.actionImport )
 		self.toolBar.addAction( self.actionExport )
-		if self.pushTableEnabled:
-			self.toolBar.addAction( self.actionPushTableDifferences )

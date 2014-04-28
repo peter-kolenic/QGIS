@@ -27,10 +27,6 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 from subprocess32 import Popen, PIPE, STDOUT, call
 import os
-from time import sleep		# XXX debugging, remove
-
-import qgis.core
-# from qgis.utils import iface
 
 from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences as Ui_Dialog
 from .ui.ui_DlgPushTableDifferences import _fromUtf8
@@ -39,7 +35,7 @@ from db_plugins import createDbPlugin # if db_manager.tree is used, remove this
 
 SLEEP=0.3
 
-PG_COMPARE_MAX_RATIO=1
+PG_COMPARE_MAX_RATIO=2.0
 class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def __init__(self, inputTable, parent=None):
@@ -54,11 +50,11 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.checkButton = QPushButton(_fromUtf8("Check"));
 		self.buttonBox.addButton(self.checkButton,QDialogButtonBox.ActionRole)
 		self.checkButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences", "Check", None, QApplication.UnicodeUTF8))
-		self.connect(self.checkButton, SIGNAL("clicked()"), self.check)
+		self.connect(self.checkButton, SIGNAL("clicked()"), self.startCheck)
 		self.syncButton = QPushButton(_fromUtf8("&Sync"));
 		self.buttonBox.addButton(self.syncButton,QDialogButtonBox.ActionRole)
 		self.syncButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences", "Sync", None, QApplication.UnicodeUTF8))
-		self.connect(self.syncButton, SIGNAL("clicked()"), self.sync)
+		self.connect(self.syncButton, SIGNAL("clicked()"), self.startSync)
 
 		self.populateData()
 
@@ -66,40 +62,28 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.populateSchemas)
 		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.populateTables)
 
-		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
+		self.connect(self.cboDatabase, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton) # XXX lambda
 		self.connect(self.cboSchema, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
 		self.connect(self.cboTable, SIGNAL("currentIndexChanged(int)"), self.disableSyncButton)
 		self.disableSyncButton()
 
+	def disableSyncButton(self):
+		self.syncButton.setEnabled(False)
+
+	@pyqtSlot('QString')
+	@pyqtSlot('QString',bool)
 	def emitText(self, text, clear=False):
-		print "EMIT", text
 		[self.plainTextEdit.setPlainText,self.plainTextEdit.appendPlainText][0 if clear else 1](text)
 
 	def enableControls(self,enable):
 		self.cboDatabase.setEnabled(enable)
 		self.cboSchema.setEnabled(enable)
 		self.cboTable.setEnabled(enable)
+		self.checkButton.setEnabled(enable)
 		if enable:
 			QApplication.restoreOverrideCursor()
 		else:
 			QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
-
-
-	def dataReady(self,data):
-		self.connections = data
-		self.emitText("data accepted")
-
-		# is no compatible tables found, close itself after message
-		if not data:
-			QMessageBox.warning( None, self.tr("Table error"),self.tr("no compatible table found"))
-			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
-
-		# enable all controls
-		self.enableControls(True)
-		self.populateDatabases()
-		self.populateSchemas()
-		self.populateTables()
-
 
 	def populateData(self):
 		# disable all controls
@@ -115,10 +99,21 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		# self.scanner.finished.connect(self.scanner.deleteLater)
 		# self.scanThread.finished.connect(self.scanThread.deleteLater)
 		self.scanThread.start()
-		# sleep(10)
 
-	def disableSyncButton(self):
-		self.syncButton.setEnabled(False)
+	def dataReady(self,data):
+		self.connections = data
+
+		# is no compatible tables found, close itself after message
+		if not data:
+			QMessageBox.warning( None, self.tr("Table error"),self.tr("no compatible table found"))
+			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
+
+		# enable all controls
+		self.enableControls(True)
+		self.populateDatabases()
+		self.populateSchemas()
+		self.populateTables()
+
 
 	def populateDatabases(self):
 		self.cboDatabase.clear()
@@ -180,7 +175,6 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				"schema_table":uri.quotedTablename(),
 				"pk": pk,
 			}
-			print "PG_CONNECT:", s
 			return s
 
 		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
@@ -189,87 +183,115 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable,pk)
 		return (pg_inputTable,pg_outputTable)
 
-	def sync(self):
+	def startCheck(self):
 		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
 		if not ( pg_inputTable and pg_outputTable):
 			return
 		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
-		retcode = 0
-		outp = "pg_compare:\n"
-		outp2=""
-		err=""
-		errMsg = ""
-		try:
-			with Popen(["pg_comparator","-S","-D","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
-				for l in iter(p.stdout.readline,''):
-					outp+=l
-					self.emitText(outp)
-				(outp2,err) = p.communicate()
-				retcode = p.returncode
-		except Exception as e:
-			print "Exc", e
-			retcode = -1
-			errMsg = unicode( e )
+		self.checkThread = QThread()
+		self.checkWorker = PGComparatorWorker(pg_inputTable, pg_outputTable, self.tr)
 
-		finally:
-			QApplication.restoreOverrideCursor()
+		self.checkWorker.moveToThread(self.checkThread)
+		self.checkWorker.emitText.connect(self.emitText)
+		# self.checkWorker.emitText['QString',bool].connect(self.emitText)
+		self.checkWorker.synced.connect(self.checkFinished)
 
-		text = "pg_comparator push differences finished succesfully" if retcode == 0 else "ERROR: pg_comparator push differences returned errnum: %d" % retcode
-		if outp2:
-			text += "\nSTDOUT:\n"
-			text += outp
-		if err:
-			text += "\nSTDERR:\n"
-			text += err
-		self.emitText(outp + text)
-		inserts = len([ l for l in outp.split("\n") if l.startswith("INSERT")])
-		updates = len([ l for l in outp.split("\n") if l.startswith("UPDATE")])
-		deletes = len([ l for l in outp.split("\n") if l.startswith("DELETE")])
+		self.checkThread.started.connect(self.checkWorker.check)
 
-		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") % 
-			(("No error" if retcode == 0 else ("Error[%d]" % retcode)),inserts,updates,deletes))
-		# return QDialog.accept(self) # XXX or continue with synch to another table ?
+		# self.checkWorker.finished.connect(self.checkThread.quit)
+		# self.checkWorker.finished.connect(self.checkWorker.deleteLater)
+		# self.checkThread.finished.connect(self.checkThread.deleteLater)
 
-	def check(self):
-		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
-		if not ( pg_inputTable and pg_outputTable):
-			return
-		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+		self.checkThread.start()
 
-		retcode = 0
-		outp = "pg_compare:\n"
-		outp2=""
-		err=""
-		errMsg = ""
-		try: 	# XXX musi to ist v inom threade. jednak aby sa to dalo zabit, a dvak aby sa nieco 
-				# zobrazovalo (zjavne to ide v tom istom threade ako nejaka cast renderingu). potom budem moct citat error a output osobitne, a dam ine farby
-			with Popen(["pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),pg_inputTable,pg_outputTable],bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
-				for l in iter(p.stdout.readline,''):
-					outp+=l
-					self.emitText(outp)
-				(outp2,err) = p.communicate()
-				retcode = p.returncode
-		except Exception as e:
-			print "Exc", e
-			retcode = -1
-			errMsg = unicode( e )
-
-		finally:
-			QApplication.restoreOverrideCursor()
-
-		text = "pg_comparator check finished succesfully" if retcode == 0 else "ERROR: pg_comparator check returned errnum: %d" % retcode
-		if retcode == 0:
+	def checkFinished(self,success,inserts,updates,deletes):
+		QApplication.restoreOverrideCursor()
+		if success:
 			self.syncButton.setEnabled(True)
-			# self.buttonBox.setStandardButtons(QDialogButtonBox.Cancel)
-		if outp2:
-			text += "\nSTDOUT:\n"
-			text += outp
-		if err:
-			text += "\nSTDERR:\n"
-			text += err
-		outp += text
-		self.emitText(outp)
+
+	def startSync(self):
+		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
+		if not ( pg_inputTable and pg_outputTable):
+			return
+		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+
+		self.syncThread = QThread()
+		self.syncWorker = PGComparatorWorker(pg_inputTable, pg_outputTable,self.tr)
+
+		self.syncWorker.moveToThread(self.syncThread)
+		self.syncWorker.emitText.connect(self.emitText)
+		self.syncWorker.synced.connect(self.syncFinished)
+		self.syncThread.started.connect(self.syncWorker.sync)
+		# self.syncWorker.finished.connect(self.syncThread.quit)
+		# self.syncWorker.finished.connect(self.syncWorker.deleteLater)
+		# self.syncThread.finished.connect(self.syncThread.deleteLater)
+
+		self.syncThread.start()
+
+
+	def syncFinished(self,success,inserts,updates,deletes):
+		QApplication.restoreOverrideCursor()
+		self.syncButton.setEnabled(False)
+		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") % 
+			("No error" if success else "Error",inserts,updates,deletes))
+
+class PGComparatorWorker(QObject):
+	finished = pyqtSignal()
+	emitText = pyqtSignal(['QString'],['QString',bool])
+	synced = pyqtSignal(bool,int,int,int)	# success, INSERTs, UPDATEs, DELETEs
+
+	def __init__(self, inputUri, outputUri, tr):
+		QObject.__init__(self)
+		self.inputUri = inputUri
+		self.outputUri = outputUri
+		self.tr = tr # i hope it doesn't alter any state, so is threadsafe - XXX check this (can be caching on-demand translating)
+
+	@pyqtSlot()
+	def check(self):
+		self.process(False)
+
+	@pyqtSlot()
+	def sync(self):
+		self.process(True)
+
+	@pyqtSlot(bool)
+	def process(self, do_it=False):
+		pg_call = ["pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),self.inputUri,self.outputUri]
+		if do_it:
+			pg_call[3:3] = ["-S","-D"]
+		self.emitText['QString',bool].emit(" ".join(pg_call),True)
+		retcode = 0
+		rest_output = ""
+		rest_error = ""
+		error_message = None
+		(inserts,updates,deletes) = ([0],[0],[0])
+		try:
+			# try something to read stdout and stderr in different way, and emit different signals
+			# http://stackoverflow.com/a/4896288/794081
+			# http://stackoverflow.com/a/12270885/794081
+			# http://stackoverflow.com/a/1810703/794081
+			# with Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True) as p:
+			with Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
+				for l in iter(p.stdout.readline,''):
+					self.emitText.emit(l.rstrip())
+					for o in [ ("INSERT",inserts), ("UPDATE", updates), ("DELETE", deletes) ]:
+						if l.startswith(o[0]): o[1][0] += 1
+				(rest_output,rest_error) = p.communicate()
+				retcode = p.returncode
+		except Exception as e:
+			retcode = -1
+			error_message = unicode( e )
+
+		text = self.tr("pg_comparator check finished succesfully") if retcode == 0 else self.tr("ERROR: pg_comparator check returned errnum: %d") % retcode
+		if error_message:
+			text += "\n" + self.tr("Exception") + ": " + error_message
+		if rest_output:
+			text += "\n" + self.tr("Final messages") + ":\n" + rest_output 
+		if rest_error:
+			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error 
+		self.emitText.emit(text)
+		self.synced.emit(retcode == 0,inserts[0],updates[0],deletes[0])
 
 class DBScanForPushCompatibleTables(QObject):
 	finished = pyqtSignal()
@@ -300,22 +322,19 @@ class DBScanForPushCompatibleTables(QObject):
 
 		inputTableUri = self.inputTable.uri().uri()
 		inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
-																										 # differs, and is part of fields default value
+																						 # differs, and is part of fields default value
 		inputTablePKs = frozenset([ f.name for f in self.inputTable.fields() if f.primaryKey])
 		self.connections = []
 		dbpluginclass = createDbPlugin( "postgis" )
 		for connection in dbpluginclass.connections(): # might not be threadsafe
 			self.emitText.emit(self.tr("Checking DB connection %s") % connection.connectionName())
-			sleep(SLEEP)
 			if connection.database() == None:
 				# connect to database
 				try:
 					if not connection.connect():
-						# QMessageBox.warning( None, self.tr("Database connection error"),self.tr("Unable to connect to ") + connection.connectionName() )
 						self.emitText.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
 						continue
 				except BaseError, e:
-					# QMessageBox.warning( None, self.tr("Unable to connect to ") + connection.connectionName(), unicode(e) )
 					self.emitText.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
 					continue
 			if connection.database().connector.hasComparatorSupport():
@@ -323,12 +342,10 @@ class DBScanForPushCompatibleTables(QObject):
 				db = connection.database()
 				schemas_ = db.schemas()
 				for schema in schemas_:
-					sleep(SLEEP)
 					self.emitText.emit(self.tr("Checking schema %s in connection %s") % (schema.name,connection.connectionName()))
 					tables = {}
 					tables_ = schema.tables()
 					for table in tables_:
-						sleep(SLEEP)
 						if table.uri().uri() == inputTableUri:
 							self.emitText.emit(self.tr("Table %s is source table - skipping") % table.name)
 							continue # skip source
@@ -364,8 +381,10 @@ class DBScanForPushCompatibleTables(QObject):
 def check_pg_comparator_presence():
 	retcode = 0
 	try:
-		with open(os.devnull,'w') as DEVNULL:
-			retcode = call(["pg_comparator","--help"],stdin=PIPE,stdout=DEVNULL,stderr=STDOUT,shell=False)
+		# XXX this closes output. for unknown reason ...
+		# with open(os.devnull,'w') as DEVNULL:
+		# 	retcode = call(["pg_comparator","--help"],stdin=PIPE,stdout=DEVNULL,stderr=STDOUT,shell=False)
+		retcode = call(["pg_comparator","--help"],stdin=PIPE,stdout=PIPE,stderr=STDOUT,shell=False)
 	except Exception as e:
 		retcode = -1
 	return retcode == 0

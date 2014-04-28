@@ -91,7 +91,7 @@
          <bool>true</bool>
         </property>
         <property name="plainText">
-         <string>sem tabulku</string>
+         <string/>
         </property>
        </widget>
       </item>

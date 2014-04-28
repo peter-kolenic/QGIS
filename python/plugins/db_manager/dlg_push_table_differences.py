@@ -191,7 +191,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
 		if not ( pg_inputTable and pg_outputTable):
 			return
-		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+		self.enableControls(False)
+		# QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 		self.checkThread = QThread()
 		self.checkWorker = PGComparatorWorker(pg_inputTable, pg_outputTable, self.tr)
@@ -210,7 +211,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.checkThread.start()
 
 	def checkFinished(self,success,inserts,updates,deletes):
-		QApplication.restoreOverrideCursor()
+		self.enableControls(True)
+		# QApplication.restoreOverrideCursor()
 		if success:
 			self.syncButton.setEnabled(True)
 			self.printMessage(self.tr("Summary: inserts :%d  updates: %d  deletes: %d") % (inserts,updates,deletes))
@@ -221,7 +223,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
 		if not ( pg_inputTable and pg_outputTable):
 			return
-		QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
+		self.enableControls(False)
+		# QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
 
 		self.syncThread = QThread()
 		self.syncWorker = PGComparatorWorker(pg_inputTable, pg_outputTable,self.tr)
@@ -239,7 +242,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 
 	def syncFinished(self,success,inserts,updates,deletes):
-		QApplication.restoreOverrideCursor()
+		self.enableControls(True)
+		# QApplication.restoreOverrideCursor()
 		self.syncButton.setEnabled(False)
 		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") % 
 			("No error" if success else "Error",inserts,updates,deletes))

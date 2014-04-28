@@ -117,7 +117,7 @@ class DBTree(QTreeView):
       if isinstance(item, Table):
         menu.addSeparator()
         menu.addAction(self.tr("Add to canvas"), self.addLayer)
-        if self.mainWindow.pushTableEnabled:
+        if self.mainWindow.pushTableEnabled and hasattr(item.database().connector,"hasComparatorSupport") and item.database().connector.hasComparatorSupport():
           menu.addAction(self.tr("Push differences"), self.pushDifferences)
 
     elif isinstance(item, DBPlugin) and item.database() is not None:

@@ -313,6 +313,7 @@ class PGComparatorWorker(QObject):
 			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error 
 		self.printMessage.emit(text)
 		self.synced.emit(retcode == 0,inserts[0],updates[0],deletes[0])
+		self.finished.emit()
 
 class DBScanForPushCompatibleTables(QObject):
 	finished = pyqtSignal()
@@ -400,6 +401,8 @@ class DBScanForPushCompatibleTables(QObject):
 		self.printMessage.emit(self.tr("Scanning for tables finished."))
 		self.printMessage.emit("")
 		self.dbDataCreated.emit(self.connections)
+		self.finished.emit()
+
 
 def check_pg_comparator_presence():
 	retcode = 0

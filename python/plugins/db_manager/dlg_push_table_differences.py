@@ -80,7 +80,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 	def clearMessages(self):
 		self.plainTextEdit.clear()
 
-	def enableControls(self,enable):
+	def enableControls(self,enable=True):
 		self.cboDatabase.setEnabled(enable)
 		self.cboSchema.setEnabled(enable)
 		self.cboTable.setEnabled(enable)
@@ -93,16 +93,17 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 	def populateData(self):
 		# disable all controls
 		self.enableControls(False)
-		# looks like storing of scanner object and thread in self is needed, otherwise SIG11 (probably get released after exit of this function)
 		self.scanner = DBScanForPushCompatibleTables(self.inputTable,self.tr)
 		self.scanThread = QThread()
 		self.scanner.moveToThread(self.scanThread)
 		self.scanner.printMessage.connect(self.printMessage)
 		self.scanner.dbDataCreated.connect(self.dataReady)
 		self.scanThread.started.connect(self.scanner.process)
-		# self.scanner.finished.connect(self.scanThread.quit)
-		# self.scanner.finished.connect(self.scanner.deleteLater)
-		# self.scanThread.finished.connect(self.scanThread.deleteLater)
+
+		self.scanner.finished.connect(self.scanThread.quit)
+		self.scanner.finished.connect(self.scanner.deleteLater)
+		self.scanThread.finished.connect(self.scanThread.deleteLater)
+
 		self.scanThread.start()
 
 	def dataReady(self,data):
@@ -205,9 +206,11 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.checkWorker.synced.connect(self.checkFinished)
 		self.checkThread.started.connect(self.checkWorker.check)
 
-		# self.checkWorker.finished.connect(self.checkThread.quit)
-		# self.checkWorker.finished.connect(self.checkWorker.deleteLater)
-		# self.checkThread.finished.connect(self.checkThread.deleteLater)
+		self.checkWorker.finished.connect(self.checkThread.quit)
+		self.checkWorker.finished.connect(self.checkWorker.deleteLater)
+		self.checkThread.finished.connect(self.checkThread.deleteLater)
+
+		self.checkThread.finished.connect(self.enableControls)
 
 		self.checkThread.start()
 
@@ -234,9 +237,12 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncWorker.clearMessages.connect(self.clearMessages)
 		self.syncWorker.synced.connect(self.syncFinished)
 		self.syncThread.started.connect(self.syncWorker.sync)
-		# self.syncWorker.finished.connect(self.syncThread.quit)
-		# self.syncWorker.finished.connect(self.syncWorker.deleteLater)
-		# self.syncThread.finished.connect(self.syncThread.deleteLater)
+
+		self.syncWorker.finished.connect(self.syncThread.quit)
+		self.syncWorker.finished.connect(self.syncWorker.deleteLater)
+		self.syncThread.finished.connect(self.syncThread.deleteLater)
+
+		self.checkThread.finished.connect(self.enableControls)
 
 		self.syncThread.start()
 

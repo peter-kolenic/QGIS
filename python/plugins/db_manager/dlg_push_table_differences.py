@@ -71,9 +71,13 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncButton.setEnabled(False)
 
 	@pyqtSlot('QString')
-	@pyqtSlot('QString',bool)
-	def emitText(self, text, clear=False):
-		[self.plainTextEdit.setPlainText,self.plainTextEdit.appendPlainText][0 if clear else 1](text)
+	# @pyqtSlot('QString',bool)
+	# def printMessage(self, text, clear=False):
+	# 	[self.plainTextEdit.setPlainText,self.plainTextEdit.appendPlainText][0 if clear else 1](text)
+	def printMessage(self, text):
+		self.plainTextEdit.appendPlainText(text)
+	def clearMessages(self):
+		self.plainTextEdit.clear()
 
 	def enableControls(self,enable):
 		self.cboDatabase.setEnabled(enable)
@@ -92,7 +96,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.scanner = DBScanForPushCompatibleTables(self.inputTable,self.tr)
 		self.scanThread = QThread()
 		self.scanner.moveToThread(self.scanThread)
-		self.scanner.emitText.connect(self.emitText)
+		self.scanner.printMessage.connect(self.printMessage)
 		self.scanner.dbDataCreated.connect(self.dataReady)
 		self.scanThread.started.connect(self.scanner.process)
 		# self.scanner.finished.connect(self.scanThread.quit)
@@ -193,10 +197,10 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.checkWorker = PGComparatorWorker(pg_inputTable, pg_outputTable, self.tr)
 
 		self.checkWorker.moveToThread(self.checkThread)
-		self.checkWorker.emitText.connect(self.emitText)
-		# self.checkWorker.emitText['QString',bool].connect(self.emitText)
+		self.checkWorker.printMessage.connect(self.printMessage)
+		# self.checkWorker.printMessage['QString',bool].connect(self.printMessage)	# XXX aj ked toto bolo vyremovane slo to, ale True aj tak nepreslo
+		self.checkWorker.clearMessages.connect(self.clearMessages)
 		self.checkWorker.synced.connect(self.checkFinished)
-
 		self.checkThread.started.connect(self.checkWorker.check)
 
 		# self.checkWorker.finished.connect(self.checkThread.quit)
@@ -209,6 +213,9 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		QApplication.restoreOverrideCursor()
 		if success:
 			self.syncButton.setEnabled(True)
+			self.printMessage(self.tr("Summary: inserts :%d  updates: %d  deletes: %d") % (inserts,updates,deletes))
+		else:			
+			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
 		(pg_inputTable,pg_outputTable) = self.get_pg_arguments()
@@ -220,7 +227,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncWorker = PGComparatorWorker(pg_inputTable, pg_outputTable,self.tr)
 
 		self.syncWorker.moveToThread(self.syncThread)
-		self.syncWorker.emitText.connect(self.emitText)
+		self.syncWorker.printMessage.connect(self.printMessage)
+		self.syncWorker.clearMessages.connect(self.clearMessages)
 		self.syncWorker.synced.connect(self.syncFinished)
 		self.syncThread.started.connect(self.syncWorker.sync)
 		# self.syncWorker.finished.connect(self.syncThread.quit)
@@ -238,7 +246,9 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 class PGComparatorWorker(QObject):
 	finished = pyqtSignal()
-	emitText = pyqtSignal(['QString'],['QString',bool])
+	# printMessage = pyqtSignal(['QString'],['QString',bool])
+	printMessage = pyqtSignal('QString')
+	clearMessages = pyqtSignal()
 	synced = pyqtSignal(bool,int,int,int)	# success, INSERTs, UPDATEs, DELETEs
 
 	def __init__(self, inputUri, outputUri, tr):
@@ -260,7 +270,9 @@ class PGComparatorWorker(QObject):
 		pg_call = ["pg_comparator","--max-ratio",str(PG_COMPARE_MAX_RATIO),self.inputUri,self.outputUri]
 		if do_it:
 			pg_call[3:3] = ["-S","-D"]
-		self.emitText['QString',bool].emit(" ".join(pg_call),True)
+		# self.printMessage['QString',bool].emit(" ".join(pg_call),True)
+		self.clearMessages.emit()
+		self.printMessage.emit(" ".join(pg_call))
 		retcode = 0
 		rest_output = ""
 		rest_error = ""
@@ -274,7 +286,7 @@ class PGComparatorWorker(QObject):
 			# with Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True) as p:
 			with Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
 				for l in iter(p.stdout.readline,''):
-					self.emitText.emit(l.rstrip())
+					self.printMessage.emit(l.rstrip())
 					for o in [ ("INSERT",inserts), ("UPDATE", updates), ("DELETE", deletes) ]:
 						if l.startswith(o[0]): o[1][0] += 1
 				(rest_output,rest_error) = p.communicate()
@@ -290,13 +302,14 @@ class PGComparatorWorker(QObject):
 			text += "\n" + self.tr("Final messages") + ":\n" + rest_output 
 		if rest_error:
 			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error 
-		self.emitText.emit(text)
+		self.printMessage.emit(text)
 		self.synced.emit(retcode == 0,inserts[0],updates[0],deletes[0])
 
 class DBScanForPushCompatibleTables(QObject):
 	finished = pyqtSignal()
 	dbDataCreated = pyqtSignal(list)
-	emitText = pyqtSignal('QString')
+	printMessage = pyqtSignal('QString')
+	clearMessages = pyqtSignal()
 	def __init__(self, inputTable, tr):
 		QObject.__init__(self)
 		self.inputTable = inputTable # ? deepcopy ?
@@ -304,6 +317,7 @@ class DBScanForPushCompatibleTables(QObject):
 
 	@pyqtSlot()
 	def process(self):	# ,inputTable,tr): -> no state
+		self.clearMessages.emit()
 		# XXX
 		# pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
 		# DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
@@ -327,55 +341,55 @@ class DBScanForPushCompatibleTables(QObject):
 		self.connections = []
 		dbpluginclass = createDbPlugin( "postgis" )
 		for connection in dbpluginclass.connections(): # might not be threadsafe
-			self.emitText.emit(self.tr("Checking DB connection %s") % connection.connectionName())
+			self.printMessage.emit(self.tr("Checking DB connection %s") % connection.connectionName())
 			if connection.database() == None:
 				# connect to database
 				try:
 					if not connection.connect():
-						self.emitText.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
+						self.printMessage.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
 						continue
 				except BaseError, e:
-					self.emitText.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
+					self.printMessage.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
 					continue
 			if connection.database().connector.hasComparatorSupport():
 				schemas = {}
 				db = connection.database()
 				schemas_ = db.schemas()
 				for schema in schemas_:
-					self.emitText.emit(self.tr("Checking schema %s in connection %s") % (schema.name,connection.connectionName()))
+					self.printMessage.emit(self.tr("Checking schema %s in connection %s") % (schema.name,connection.connectionName()))
 					tables = {}
 					tables_ = schema.tables()
 					for table in tables_:
 						if table.uri().uri() == inputTableUri:
-							self.emitText.emit(self.tr("Table %s is source table - skipping") % table.name)
+							self.printMessage.emit(self.tr("Table %s is source table - skipping") % table.name)
 							continue # skip source
 						fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
 						if fieldsDefs != inputTableFieldsDefs:
-							self.emitText.emit(self.tr("Table %s is not compatible - skipping") % table.name)
+							self.printMessage.emit(self.tr("Table %s is not compatible - skipping") % table.name)
 							continue
 						tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])	
 						commonPKs = set(tablePKs.intersection(inputTablePKs))
 						# if the check of primaryKey were done on "Check",
 						# user would be able to find out when the table is ill created
 						if not commonPKs:
-							self.emitText.emit(self.tr("WARNING: Table %s is fields-compatible, but has no common primary key with source table - skipping") % table.name)
+							self.printMessage.emit(self.tr("WARNING: Table %s is fields-compatible, but has no common primary key with source table - skipping") % table.name)
 							continue
 						tables[table.name] = (table,commonPKs.pop())
-						self.emitText.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name,schema.name,connection.connectionName()))
+						self.printMessage.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name,schema.name,connection.connectionName()))
 					if tables:
 						schemas[schema.name] = (schema, tables)
 					else:
-						self.emitText.emit(self.tr("Skipping schema %s, no compatible table") % schema.name)
+						self.printMessage.emit(self.tr("Skipping schema %s, no compatible table") % schema.name)
 				if schemas:
 					self.connections.append((connection, schemas))
 				else:
-					self.emitText.emit(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
+					self.printMessage.emit(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
 			else:
-				self.emitText.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
+				self.printMessage.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
 		if not self.connections:
-			self.emitText.emit(self.tr("No compatible tables found in any database"))
-		self.emitText.emit(self.tr("Scanning for tables finished."))
-		self.emitText.emit("")
+			self.printMessage.emit(self.tr("No compatible tables found in any database"))
+		self.printMessage.emit(self.tr("Scanning for tables finished."))
+		self.printMessage.emit("")
 		self.dbDataCreated.emit(self.connections)
 
 def check_pg_comparator_presence():

@@ -25,7 +25,7 @@ The content of this file is based on
 
 from PyQt4.QtCore import *
 from PyQt4.QtGui import *
-from subprocess32 import Popen, PIPE, STDOUT, call
+from subprocess import Popen, PIPE, STDOUT, call
 import os
 
 from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences as Ui_Dialog
@@ -287,13 +287,13 @@ class PGComparatorWorker(QObject):
 			# http://stackoverflow.com/a/12270885/794081
 			# http://stackoverflow.com/a/1810703/794081
 			# with Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=PIPE,universal_newlines=True) as p:
-			with Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True) as p:
-				for l in iter(p.stdout.readline,''):
-					self.printMessage.emit(l.rstrip())
-					for o in [ ("INSERT",inserts), ("UPDATE", updates), ("DELETE", deletes) ]:
-						if l.startswith(o[0]): o[1][0] += 1
-				(rest_output,rest_error) = p.communicate()
-				retcode = p.returncode
+			p = Popen(pg_call,bufsize=1,shell=False,stdout=PIPE,stderr=STDOUT,universal_newlines=True)
+			for l in iter(p.stdout.readline,''):
+				self.printMessage.emit(l.rstrip())
+				for o in [ ("INSERT",inserts), ("UPDATE", updates), ("DELETE", deletes) ]:
+					if l.startswith(o[0]): o[1][0] += 1
+			(rest_output,rest_error) = p.communicate()
+			retcode = p.returncode
 		except Exception as e:
 			retcode = -1
 			error_message = unicode( e )

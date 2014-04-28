@@ -80,12 +80,12 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 	def clearMessages(self):
 		self.plainTextEdit.clear()
 
-	def enableControls(self,enable=True):
+	def enableControls(self,enable=True, resetMouseCursor=False):
 		self.cboDatabase.setEnabled(enable)
 		self.cboSchema.setEnabled(enable)
 		self.cboTable.setEnabled(enable)
 		self.checkButton.setEnabled(enable)
-		if enable:
+		if enable or resetMouseCursor:
 			QApplication.restoreOverrideCursor()
 		else:
 			QApplication.setOverrideCursor(QCursor(Qt.WaitCursor))
@@ -108,17 +108,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def dataReady(self,data):
 		self.connections = data
-
-		# is no compatible tables found, close itself after message
 		if not data:
-			QMessageBox.warning( None, self.tr("Table error"),self.tr("no compatible table found"))
-			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
-
-		# enable all controls
-		self.enableControls(True)
-		self.populateDatabases()
-		self.populateSchemas()
-		self.populateTables()
+			self.printMessage(self.tr("Table error - no compatible table to push to found"))
+			self.enableControls(enable=False, resetMouseCursor=True)
+		else:
+			# enable all controls
+			self.enableControls(True)
+			self.populateDatabases()
+			self.populateSchemas()
+			self.populateTables()
 
 
 	def populateDatabases(self):

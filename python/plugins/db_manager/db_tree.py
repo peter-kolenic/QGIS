@@ -117,6 +117,8 @@ class DBTree(QTreeView):
       if isinstance(item, Table):
         menu.addSeparator()
         menu.addAction(self.tr("Add to canvas"), self.addLayer)
+        if self.mainWindow.pushTableEnabled and hasattr(item.database().connector,"hasComparatorSupport") and item.database().connector.hasComparatorSupport():
+          menu.addAction(self.tr("Push differences"), self.pushDifferences)
 
     elif isinstance(item, DBPlugin) and item.database() is not None:
       menu.addAction(self.tr("Re-connect"), self.reconnect)
@@ -141,6 +143,11 @@ class DBTree(QTreeView):
     table = self.currentTable()
     if table is not None:
       QgsMapLayerRegistry.instance().addMapLayers([table.toMapLayer()])
+
+  def pushDifferences(self):
+    table = self.currentTable()
+    if table is not None:
+      self.mainWindow.pushTableDifferencesActionSlot()
 
   def reconnect(self):
     db = self.currentDatabase()

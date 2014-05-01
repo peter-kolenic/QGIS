@@ -33,8 +33,6 @@ from .ui.ui_DlgPushTableDifferences import _fromUtf8
 from .db_plugins.plugin import BaseError
 from db_plugins import createDbPlugin # if db_manager.tree is used, remove this
 
-SLEEP=0.3
-
 PG_COMPARE_MAX_RATIO=2.0
 class DlgPushTableDifferences(QDialog, Ui_Dialog):
 

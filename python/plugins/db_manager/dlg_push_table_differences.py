@@ -45,7 +45,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		if not [ f for f in self.inputTable.fields() if f.primaryKey ]:
 			QMessageBox.warning( None, self.tr("Table error"),self.tr("unable to push differences - table doesn't have primary key column"))
 			QMetaObject.invokeMethod(self,"close",Qt.QueuedConnection)
-			return 
+			return
 
 		self.setupUi(self)
 		self.checkButton = QPushButton(_fromUtf8("Check"));
@@ -217,7 +217,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		if success:
 			self.syncButton.setEnabled(True)
 			self.printMessage(self.tr("Summary: inserts :%d  updates: %d  deletes: %d") % (inserts,updates,deletes))
-		else:			
+		else:
 			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
@@ -248,7 +248,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 	def syncFinished(self,success,inserts,updates,deletes):
 		self.enableControls(True)
 		self.syncButton.setEnabled(False)
-		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") % 
+		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") %
 			("No error" if success else "Error",inserts,updates,deletes))
 
 class PGComparatorWorker(QObject):
@@ -306,9 +306,9 @@ class PGComparatorWorker(QObject):
 		if error_message:
 			text += "\n" + self.tr("Exception") + ": " + error_message
 		if rest_output:
-			text += "\n" + self.tr("Final messages") + ":\n" + rest_output 
+			text += "\n" + self.tr("Final messages") + ":\n" + rest_output
 		if rest_error:
-			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error 
+			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error
 		self.printMessage.emit(text)
 		self.synced.emit(retcode == 0,inserts[0],updates[0],deletes[0])
 		self.finished.emit()
@@ -343,7 +343,7 @@ class DBScanForPushCompatibleTables(QObject):
 		#                                                               compatible_tables = { table_name: (table, commonPK) }
 
 		inputTableUri = self.inputTable.uri().uri()
-		inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name 
+		inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ] # not using more precise f.definition(), because sequencer name
 																						 # differs, and is part of fields default value
 		inputTablePKs = frozenset([ f.name for f in self.inputTable.fields() if f.primaryKey])
 		self.connections = []
@@ -375,7 +375,7 @@ class DBScanForPushCompatibleTables(QObject):
 						if fieldsDefs != inputTableFieldsDefs:
 							self.printMessage.emit(self.tr("Table %s is not compatible - skipping") % table.name)
 							continue
-						tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])	
+						tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])
 						commonPKs = set(tablePKs.intersection(inputTablePKs))
 						# if the check of primaryKey were done on "Check",
 						# user would be able to find out when the table is ill created

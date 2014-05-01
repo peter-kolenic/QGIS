@@ -178,7 +178,7 @@ class DBManager(QMainWindow):
 	def pushTableDifferencesActionSlot(self):
 		if not self.pushTableEnabled:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("Push table differences is disabled."))
-			return			
+			return
 		table = self.tree.currentTable()
 		if table is None:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))

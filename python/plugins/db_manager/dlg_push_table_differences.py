@@ -325,16 +325,14 @@ class DBScanForPushCompatibleTables(QObject):
 		# TODO: add arguments (, inputTable, tr): -> make this function stateless 
 		#   (and allow for more worker threads at once)
 		self.clearMessages.emit()
-		# XXX
-		# pouzit nieco ako [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
+		# FIXME:
+		# use something like [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
 		# DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
-		# negenerovat znova
-		# a vysomarit sa z toho, kde v strome su ulozene vyrobene konekcie (ak teda sa mozeme spolahnut na to, ze su populated, co mozno nie)
-		# urobit funkciu vrat vsetky db konekcie do niekam, tu to fakt nema co robit
-		# a najlepsie populivat naraz, nie opakovane (co ak remote konekcia a 100000 tabuliek ?)
-
-		# alebo, mozno urobit miesto 3 combobox-ov strom kompatibilnych tabuliek (ak by napriklad 10000 DB konekcii, aby sa nepopulovali
-		# naraz - podobne ako db_manager.tree (myslim ze sa nepopuluju naraz ale on demand)
+		# don't generate from start.
+		# find out, where in DTree are connections stored (if we can rely on them beeing already populated, which 
+		# can not be the case)
+		# Maybe refactor out the get all db connections functionality (this is not the right place)
+		# If possible, cache results (i.e. in the case of remote DB connection and 10000 tables there).
 
 		# data is stored in self.connections, in structure:
 		#	self.connection = [ (connection, schemas )]

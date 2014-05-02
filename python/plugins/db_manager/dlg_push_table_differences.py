@@ -270,9 +270,9 @@ class PGComparatorWorker(QObject):
 
 	@pyqtSlot(bool)
 	def process(self, do_it=False):
-		pg_call = ["pg_comparator", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputUri, self.outputUri]
+		pg_call = ["pg_comparator", "--verbose", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputUri, self.outputUri]
 		if do_it:
-			pg_call[3:3] = ["-S", "-D"]
+			pg_call[4:4] = ["-S", "-D"]
 		self.clearMessages.emit()
 		self.printMessage.emit(" ".join(pg_call))
 		retcode = 0

@@ -154,6 +154,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.cboTable.addItem(table)
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
+	# return (inputUri,outputUri,outputTable)
 	def get_pg_arguments(self):
 		dbi = self.cboDatabase.currentIndex()
 		pushDiffSchema = self.cboSchema.currentText()
@@ -182,18 +183,18 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
 		pk = ",".join( [ '"'+k+'"' for k in self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] ] )
-		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable, pk)
-		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable, pk)
-		return (pg_inputTable, pg_outputTable)
+		pg_inputTableConnectString = pg_comparator_connect_string_for_table(self.inputTable, pk)
+		pg_outputTableConnectString = pg_comparator_connect_string_for_table(pushDiffTable, pk)
+		return (pg_inputTableConnectString, pg_outputTableConnectString, pushDiffTable)
 
 	def startCheck(self):
-		(pg_inputTable, pg_outputTable) = self.get_pg_arguments()
-		if not ( pg_inputTable and pg_outputTable):
+		(pg_inputTableConnectString, pg_outputTableConnectString, outputTable) = self.get_pg_arguments()
+		if not ( pg_inputTableConnectString and pg_outputTableConnectString):
 			return
 		self.enableControls(False)
 
 		self.checkThread = QThread()
-		self.checkWorker = PGComparatorWorker(pg_inputTable, pg_outputTable, self.tr)
+		self.checkWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, outputTable, self.tr)
 
 		self.checkWorker.moveToThread(self.checkThread)
 		self.checkWorker.printMessage.connect(self.printMessage)
@@ -209,22 +210,25 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 		self.checkThread.start()
 
-	def checkFinished(self, success, inserts, updates, deletes):
+	def checkFinished(self, success, inserts, updates, deletes, has_privileges):
 		self.enableControls(True)
 		if success:
-			self.syncButton.setEnabled(True)
 			self.printMessage(self.tr("Summary: inserts :%d  updates: %d  deletes: %d") % (inserts, updates, deletes))
+			if has_privileges:
+				self.syncButton.setEnabled(True)
+			else:
+				self.printMessage(self.tr("Can't Push - missing privileges"))
 		else:
 			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
-		(pg_inputTable, pg_outputTable) = self.get_pg_arguments()
-		if not ( pg_inputTable and pg_outputTable):
+		(pg_inputTableConnectString, pg_outputTableConnectString, outputTable) = self.get_pg_arguments()
+		if not ( pg_inputTableConnectString and pg_outputTableConnectString):
 			return
 		self.enableControls(False)
 
 		self.syncThread = QThread()
-		self.syncWorker = PGComparatorWorker(pg_inputTable, pg_outputTable, self.tr)
+		self.syncWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, outputTable, self.tr)
 
 		self.syncWorker.moveToThread(self.syncThread)
 		self.syncWorker.printMessage.connect(self.printMessage)
@@ -241,7 +245,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncThread.start()
 
 
-	def syncFinished(self, success, inserts, updates, deletes):
+	def syncFinished(self, success, inserts, updates, deletes, has_privileges):	# has_privileges is ignored here
 		self.enableControls(True)
 		self.syncButton.setEnabled(False)
 		QMessageBox.information(self, self.tr("Push differences"), self.tr("%s while pushing differences: inserts :%d  updates: %d  deletes: %d") %
@@ -251,12 +255,13 @@ class PGComparatorWorker(QObject):
 	finished = pyqtSignal()
 	printMessage = pyqtSignal('QString')
 	clearMessages = pyqtSignal()
-	synced = pyqtSignal(bool, int, int, int)	# success, INSERTs, UPDATEs, DELETEs
+	synced = pyqtSignal(bool, int, int, int, bool)	# success, INSERTs, UPDATEs, DELETEs, has INSERT;UPDATE;DELETE privileges
 
-	def __init__(self, inputUri, outputUri, tr):
+	def __init__(self, inputUri, outputUri, outputTable, tr):
 		QObject.__init__(self)
 		self.inputUri = inputUri
 		self.outputUri = outputUri
+		self.outputTable = outputTable
 		self.tr = tr	# TODO: i hope it doesn't alter any state, so is threadsafe - check this 
 						# (can be caching on-demand translating)
 
@@ -306,7 +311,8 @@ class PGComparatorWorker(QObject):
 		if rest_error:
 			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error
 		self.printMessage.emit(text)
-		self.synced.emit(retcode == 0, inserts[0], updates[0], deletes[0])
+		has_privileges = all(self.outputTable.database().connector.getTablePrivileges( (self.outputTable.schema().name, self.outputTable.name) ))
+		self.synced.emit(retcode == 0, inserts[0], updates[0], deletes[0], has_privileges)
 		self.finished.emit()
 
 class DBScanForPushCompatibleTables(QObject):

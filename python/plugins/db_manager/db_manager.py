@@ -41,7 +41,7 @@ class DBManager(QMainWindow):
 	def __init__(self, iface, parent=None):
 		QMainWindow.__init__(self, parent)
 		self.setAttribute(Qt.WA_DeleteOnClose)
-		self.pushTableEnabled = check_pg_comparator_presence()
+		self.pushTableEnabled = check_pg_comparator_presence() # FIXME: check: might be removable (with little less robust code)
 		self.setupUi()
 		self.iface = iface
 
@@ -415,8 +415,8 @@ class DBManager(QMainWindow):
 		sep = self.menuTable.addSeparator(); sep.setObjectName("DB_Manager_TableMenu_placeholder"); sep.setVisible(False)
 		self.actionImport = self.menuTable.addAction( QIcon(":/db_manager/actions/import"), self.tr("&Import layer/file"), self.importActionSlot )
 		self.actionExport = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Export to file"), self.exportActionSlot )
-		if self.pushTableEnabled:
-			self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push to other table 2"), self.pushTableDifferencesActionSlot )
+		# if self.pushTableEnabled:
+		# 	self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push to other table 2"), self.pushTableDifferencesActionSlot )
 		self.menuTable.addSeparator()
 		#self.actionShowSystemTables = self.menuTable.addAction(self.tr("Show system tables/views"), self.showSystemTables)
 		#self.actionShowSystemTables.setCheckable(True)

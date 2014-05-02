@@ -48,15 +48,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			return
 
 		self.setupUi(self)
-		self.checkButton = QPushButton(_fromUtf8("Check"))
+		self.checkButton = QPushButton(_fromUtf8("&Check differences"))
 		self.buttonBox.addButton(self.checkButton, QDialogButtonBox.ActionRole)
 		self.checkButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences",
-			"Check", None, QApplication.UnicodeUTF8))
+			"&Check differences", None, QApplication.UnicodeUTF8))
 		self.connect(self.checkButton, SIGNAL("clicked()"), self.startCheck)
-		self.syncButton = QPushButton(_fromUtf8("&Sync"))
+		self.syncButton = QPushButton(_fromUtf8("&Push differences"))
 		self.buttonBox.addButton(self.syncButton, QDialogButtonBox.ActionRole)
 		self.syncButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences",
-			"Sync", None, QApplication.UnicodeUTF8))
+			"&Push differences", None, QApplication.UnicodeUTF8))
 		self.connect(self.syncButton, SIGNAL("clicked()"), self.startSync)
 
 		self.populateData()

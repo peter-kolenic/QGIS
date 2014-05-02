@@ -169,7 +169,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			# FIXME: escape [@"/:?] in password
 			# No fear of shell code injection, since Popen(shell=False)
 			uri = table.uri()
-			s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?\"%(pk)s\"" % {
+			s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?%(pk)s" % {
 				"login":uri.username(),
 				"pass":	uri.password(),
 				"host":	uri.host(),
@@ -181,7 +181,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			return s
 
 		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
-		pk = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1]
+		pk = ",".join( [ '"'+k+'"' for k in self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] ] )
 		pg_inputTable = pg_comparator_connect_string_for_table(self.inputTable, pk)
 		pg_outputTable = pg_comparator_connect_string_for_table(pushDiffTable, pk)
 		return (pg_inputTable, pg_outputTable)
@@ -337,7 +337,7 @@ class DBScanForPushCompatibleTables(QObject):
 		# data is stored in self.connections, in structure:
 		#	self.connection = [ (connection, schemas )]
 		#                                    schemas = { name: (schema, compatible_tables) }
-		#                                                               compatible_tables = { table_name: (table, PK) }
+		#                                                               compatible_tables = { table_name: (table, [PKs]) }
 
 		inputTableUri = self.inputTable.uri().uri()
 
@@ -345,14 +345,12 @@ class DBScanForPushCompatibleTables(QObject):
 		# not using more precise f.definition(), because sequencer name
 		# differs, and is part of fields default value
 
+		# primary key can be composite
 		inputTablePK = [ f.name for f in self.inputTable.fields() if f.primaryKey ]
 		self.connections = []
-		if len(inputTablePK) > 1:
+		if len(inputTablePK) == 0:
 			self.printMessage.emit(
-				self.tr("ERROR: Source table must have simple primary key column, but it has composite: ") + ",".join(inputTablePK))
-		elif len(inputTablePK) == 0:
-			self.printMessage.emit(
-				self.tr("ERROR: Source table must have simple primary key column, it has none."))
+				self.tr("ERROR: Source table must have simple primary key column, and it has none."))
 		else:
 			dbpluginclass = createDbPlugin( "postgis" )
 			for connection in dbpluginclass.connections(): # might not be threadsafe
@@ -382,13 +380,7 @@ class DBScanForPushCompatibleTables(QObject):
 							if fieldsDefs != inputTableFieldsDefs:
 								self.printMessage.emit(self.tr("Table %s is not compatible - skipping") % table.name)
 								continue
-							tablePK = [ f.name for f in table.fields() if f.primaryKey ]
-							# if the check of primaryKey were done on "Check",
-							# user would be able to find out when the table is ill created
-							if tablePK != inputTablePK:
-								self.printMessage.emit(self.tr("WARNING: Table %s is fields-compatible, but not primary key compatible - skipping") % table.name)
-								continue
-							tables[table.name] = (table, inputTablePK[0])
+							tables[table.name] = (table, inputTablePK)
 							self.printMessage.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name, schema.name, connection.connectionName()))
 						if tables:
 							schemas[schema.name] = (schema, tables)

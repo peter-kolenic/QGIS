@@ -175,7 +175,10 @@ class DBManager(QMainWindow):
 
 		inLayer.deleteLater()
 
-	def pushTableDifferencesActionSlot(self):
+	# FIXME: 3 ignored params, so self.invokeCallback (used by registerAction, used by db_plugins/postgis/plugin to register action to table)
+	# won't fail
+	def pushTableDifferencesActionSlot(self, ignored1=None, ignored2=None, ignored3=None): 
+		QApplication.restoreOverrideCursor() # if we are called from self.invokeCallback, we get waiting cursor
 		if not self.pushTableEnabled:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("Push table differences is disabled."))
 			return
@@ -184,7 +187,7 @@ class DBManager(QMainWindow):
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
 			return
 		if not table.database().connector.hasComparatorSupport():
-			QMessageBox.information(self, self.tr("Sorry"), self.tr("Selected table doesn't have pg_comparator supporting functions."))
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("Selected database doesn't contain differences support."))
 			return
 
 		from .dlg_push_table_differences import DlgPushTableDifferences
@@ -412,8 +415,8 @@ class DBManager(QMainWindow):
 		sep = self.menuTable.addSeparator(); sep.setObjectName("DB_Manager_TableMenu_placeholder"); sep.setVisible(False)
 		self.actionImport = self.menuTable.addAction( QIcon(":/db_manager/actions/import"), self.tr("&Import layer/file"), self.importActionSlot )
 		self.actionExport = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Export to file"), self.exportActionSlot )
-		if self.pushTableEnabled:
-			self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push differences"), self.pushTableDifferencesActionSlot )
+		# if self.pushTableEnabled:
+		# 	self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push to other table 2"), self.pushTableDifferencesActionSlot )
 		self.menuTable.addSeparator()
 		#self.actionShowSystemTables = self.menuTable.addAction(self.tr("Show system tables/views"), self.showSystemTables)
 		#self.actionShowSystemTables.setCheckable(True)

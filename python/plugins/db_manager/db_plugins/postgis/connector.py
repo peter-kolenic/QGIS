@@ -60,8 +60,7 @@ class PostGisDBConnector(DBConnector):
 		self._checkRaster()
 		self._checkGeometryColumnsTable()
 		self._checkRasterColumnsTable()
-		self._checkComparatorFunctions()
-		self._checkXORAggregator()
+		self._checkComparatorSupport()
 
 	def _connectionInfo(self):
 		return unicode(self._uri.connectionInfo())
@@ -109,19 +108,12 @@ class PostGisDBConnector(DBConnector):
 			self.has_raster_columns_access = self.getTablePrivileges('raster_columns')[0]
 		return self.has_raster_columns
 
-	def _checkComparatorFunctions(self):
+	def _checkComparatorSupport(self):
 		""" check whether functions for checksumming needed for efficient remote table comparation are present """
-		c = self._execute(None, u"SELECT count(*) FROM pg_proc WHERE proname in ( 'cksum2','cksum4','cksum8','varbit', 'tobit','bytea','varbit2int2','bit2int2' ) ;")
-		self.has_comparatorFunctions = self._fetchone(c)[0] >= 13
+		c = self._execute(None, u"SELECT count(DISTINCT probin) FROM pg_proc WHERE probin IN ( '$libdir/pgc_checksum', '$libdir/pgc_casts' ) ;")
+		self.has_comparatorSupport = self._fetchone(c)[0] >= 2
 		self._close_cursor(c)
-		return self.has_comparatorFunctions
-
-	def _checkXORAggregator(self):
-		""" check whether XOR aggregator is present """
-		c = self._execute(None, u"SELECT count(*) FROM pg_proc WHERE proname = 'xor' AND proisagg")
-		self.has_XORAggregator = self._fetchone(c)[0] >= 4
-		self._close_cursor(c)
-		return self.has_XORAggregator
+		return self.has_comparatorSupport
 
 
 	def getInfo(self):
@@ -156,7 +148,7 @@ class PostGisDBConnector(DBConnector):
 		return self.has_raster
 
 	def hasComparatorSupport(self):
-		return self.has_comparatorFunctions and self.has_XORAggregator
+		return self.has_comparatorSupport
 
 	def hasCustomQuerySupport(self):
 		from qgis.core import QGis

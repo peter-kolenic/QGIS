@@ -163,6 +163,16 @@ class PGDatabase(Database):
 
 		action = QAction(self.tr("Run &Vacuum Analyze"), self)
 		mainWindow.registerAction( action, self.tr("&Table"), self.runVacuumAnalyzeActionSlot )
+		if self.connector.hasComparatorSupport() and mainWindow.pushTableEnabled: # DB has support and we have pg_comparator on PATH
+			separator = QAction(self);
+			separator.setSeparator(True)
+			mainWindow.registerAction( separator, self.tr("&Table") )
+			action = QAction(self.tr("Push to other table"), self)
+			mainWindow.registerAction( action, self.tr("&Table"), mainWindow.pushTableDifferencesActionSlot )
+			separator = QAction(self);
+			separator.setSeparator(True)
+			mainWindow.registerAction( separator, self.tr("&Table") )
+
 
 	def runVacuumAnalyzeActionSlot(self, item, action, parent):
 		QApplication.restoreOverrideCursor()

@@ -163,7 +163,7 @@ class PGDatabase(Database):
 
 		action = QAction(self.tr("Run &Vacuum Analyze"), self)
 		mainWindow.registerAction( action, self.tr("&Table"), self.runVacuumAnalyzeActionSlot )
-		if self.connector.hasComparatorSupport():
+		if self.connector.hasComparatorSupport() and mainWindow.pushTableEnabled: # DB has support and we have pg_comparator on PATH
 			separator = QAction(self);
 			separator.setSeparator(True)
 			mainWindow.registerAction( separator, self.tr("&Table") )

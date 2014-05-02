@@ -41,7 +41,7 @@ class DBManager(QMainWindow):
 	def __init__(self, iface, parent=None):
 		QMainWindow.__init__(self, parent)
 		self.setAttribute(Qt.WA_DeleteOnClose)
-		self.pushTableEnabled = check_pg_comparator_presence() # FIXME: check: might be removable (with little less robust code)
+		self.pushTableEnabled = check_pg_comparator_presence()
 		self.setupUi()
 		self.iface = iface
 

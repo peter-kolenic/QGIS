@@ -337,65 +337,71 @@ class DBScanForPushCompatibleTables(QObject):
 		# data is stored in self.connections, in structure:
 		#	self.connection = [ (connection, schemas )]
 		#                                    schemas = { name: (schema, compatible_tables) }
-		#                                                               compatible_tables = { table_name: (table, commonPK) }
+		#                                                               compatible_tables = { table_name: (table, PK) }
 
 		inputTableUri = self.inputTable.uri().uri()
 
-		inputTableFieldsDefs = [ (f.name, f.dataType ) for f in self.inputTable.fields() ]
+		inputTableFieldsDefs = [ (f.name, f.dataType, f.primaryKey ) for f in self.inputTable.fields() ]
 		# not using more precise f.definition(), because sequencer name
 		# differs, and is part of fields default value
 
-		inputTablePKs = frozenset([ f.name for f in self.inputTable.fields() if f.primaryKey])
+		inputTablePK = [ f.name for f in self.inputTable.fields() if f.primaryKey ]
 		self.connections = []
-		dbpluginclass = createDbPlugin( "postgis" )
-		for connection in dbpluginclass.connections(): # might not be threadsafe
-			self.printMessage.emit(self.tr("Checking DB connection %s") % connection.connectionName())
-			if connection.database() == None:
-				# connect to database
-				try:
-					if not connection.connect():
-						self.printMessage.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
+		if len(inputTablePK) > 1:
+			self.printMessage.emit(
+				self.tr("ERROR: Source table must have simple primary key column, but it has composite: ") + ",".join(inputTablePK))
+		elif len(inputTablePK) == 0:
+			self.printMessage.emit(
+				self.tr("ERROR: Source table must have simple primary key column, it has none."))
+		else:
+			dbpluginclass = createDbPlugin( "postgis" )
+			for connection in dbpluginclass.connections(): # might not be threadsafe
+				self.printMessage.emit(self.tr("Checking DB connection %s") % connection.connectionName())
+				if connection.database() == None:
+					# connect to database
+					try:
+						if not connection.connect():
+							self.printMessage.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
+							continue
+					except BaseError, e:
+						self.printMessage.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
 						continue
-				except BaseError, e:
-					self.printMessage.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
-					continue
-			if connection.database().connector.hasComparatorSupport():
-				schemas = {}
-				db = connection.database()
-				schemas_ = db.schemas()
-				for schema in schemas_:
-					self.printMessage.emit(self.tr("Checking schema %s in connection %s") % (schema.name, connection.connectionName()))
-					tables = {}
-					tables_ = schema.tables()
-					for table in tables_:
-						if table.uri().uri() == inputTableUri:
-							self.printMessage.emit(self.tr("Table %s is source table - skipping") % table.name)
-							continue # skip source
-						fieldsDefs = [ (f.name, f.dataType) for f in table.fields() ]
-						if fieldsDefs != inputTableFieldsDefs:
-							self.printMessage.emit(self.tr("Table %s is not compatible - skipping") % table.name)
-							continue
-						tablePKs = frozenset([f.name for f in table.fields() if f.primaryKey])
-						commonPKs = set(tablePKs.intersection(inputTablePKs))
-						# if the check of primaryKey were done on "Check",
-						# user would be able to find out when the table is ill created
-						if not commonPKs:
-							self.printMessage.emit(self.tr("WARNING: Table %s is fields-compatible, but has no common primary key with source table - skipping") % table.name)
-							continue
-						tables[table.name] = (table, commonPKs.pop())
-						self.printMessage.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name, schema.name, connection.connectionName()))
-					if tables:
-						schemas[schema.name] = (schema, tables)
+				if connection.database().connector.hasComparatorSupport():
+					schemas = {}
+					db = connection.database()
+					schemas_ = db.schemas()
+					for schema in schemas_:
+						self.printMessage.emit(self.tr("Checking schema %s in connection %s") % (schema.name, connection.connectionName()))
+						tables = {}
+						tables_ = schema.tables()
+						for table in tables_:
+							if table.uri().uri() == inputTableUri:
+								self.printMessage.emit(self.tr("Table %s is source table - skipping") % table.name)
+								continue # skip source
+							fieldsDefs = [ (f.name, f.dataType, f.primaryKey) for f in table.fields() ]
+							if fieldsDefs != inputTableFieldsDefs:
+								self.printMessage.emit(self.tr("Table %s is not compatible - skipping") % table.name)
+								continue
+							tablePK = [ f.name for f in table.fields() if f.primaryKey ]
+							# if the check of primaryKey were done on "Check",
+							# user would be able to find out when the table is ill created
+							if tablePK != inputTablePK:
+								self.printMessage.emit(self.tr("WARNING: Table %s is fields-compatible, but not primary key compatible - skipping") % table.name)
+								continue
+							tables[table.name] = (table, inputTablePK[0])
+							self.printMessage.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name, schema.name, connection.connectionName()))
+						if tables:
+							schemas[schema.name] = (schema, tables)
+						else:
+							self.printMessage.emit(self.tr("Skipping schema %s, no compatible table") % schema.name)
+					if schemas:
+						self.connections.append((connection, schemas))
 					else:
-						self.printMessage.emit(self.tr("Skipping schema %s, no compatible table") % schema.name)
-				if schemas:
-					self.connections.append((connection, schemas))
+						self.printMessage.emit(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
 				else:
-					self.printMessage.emit(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
-			else:
-				self.printMessage.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
-		if not self.connections:
-			self.printMessage.emit(self.tr("No compatible tables found in any database"))
+					self.printMessage.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
+			if not self.connections:
+				self.printMessage.emit(self.tr("No compatible tables found in any database"))
 		self.printMessage.emit(self.tr("Scanning for tables finished."))
 		self.printMessage.emit("")
 		self.dbDataCreated.emit(self.connections)

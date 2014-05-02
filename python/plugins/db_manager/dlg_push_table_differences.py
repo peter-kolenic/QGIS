@@ -182,7 +182,10 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			return s
 
 		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
-		pk = ",".join( [ '"'+k+'"' for k in self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] ] )
+		# FIXME: fix pg_comparator, so quoted column names work not only in diff, but also on sync 
+		# pk = ",".join( [ '"'+k+'"' for k in self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] ] )
+		# in the meanwhile, hope no column needs to be quoted
+		pk = ",".join( self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] )
 		pg_inputTableConnectString = pg_comparator_connect_string_for_table(self.inputTable, pk)
 		pg_outputTableConnectString = pg_comparator_connect_string_for_table(pushDiffTable, pk)
 		return (pg_inputTableConnectString, pg_outputTableConnectString, pushDiffTable)
@@ -240,7 +243,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncWorker.finished.connect(self.syncWorker.deleteLater)
 		self.syncThread.finished.connect(self.syncThread.deleteLater)
 
-		self.checkThread.finished.connect(self.enableControls)
+		self.syncThread.finished.connect(self.enableControls)
 
 		self.syncThread.start()
 
@@ -275,9 +278,9 @@ class PGComparatorWorker(QObject):
 
 	@pyqtSlot(bool)
 	def process(self, do_it=False):
-		pg_call = ["pg_comparator", "--verbose", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputUri, self.outputUri]
+		pg_call = ["pg_comparator", "--debug", "--verbose", "--verbose", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputUri, self.outputUri]
 		if do_it:
-			pg_call[4:4] = ["-S", "-D"]
+			pg_call[6:6] = ["-S", "-D"]
 		self.clearMessages.emit()
 		self.printMessage.emit(" ".join(pg_call))
 		retcode = 0

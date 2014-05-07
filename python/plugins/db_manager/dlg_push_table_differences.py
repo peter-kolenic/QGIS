@@ -28,6 +28,9 @@ from PyQt4.QtGui import *
 from subprocess import Popen, PIPE, STDOUT, call
 import os
 
+import pdb
+import traceback
+
 from .ui.ui_DlgPushTableDifferences import Ui_DbManagerDlgPushTableDifferences as Ui_Dialog
 from .ui.ui_DlgPushTableDifferences import _fromUtf8
 from .db_plugins.plugin import BaseError
@@ -166,38 +169,41 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				self.tr("Nowhere to push differences to - select table"))
 			return (None, None)
 
-		def pg_comparator_connect_string_for_table(table, pk):
+		def pg_comparator_connect_string_for_table(connection, schema, table, pk):
 			# FIXME: escape [@"/:?] in password
 			# No fear of shell code injection, since Popen(shell=False)
-			uri = table.uri()
-			s = "pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/%(schema_table)s?%(pk)s" % {
+			uri = connection.db.uri()
+			s = 'pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/"%(schema)s"."%(table)s"?%(pk)s' % {
 				"login":uri.username(),
 				"pass":	uri.password(),
 				"host":	uri.host(),
 				"port":	uri.port(),
 				"base":	uri.database(),
-				"schema_table":uri.quotedTablename(),
+				"schema": schema,
+				"table": table,
 				"pk": pk,
 			}
 			return s
 
-		pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
+		## pushDiffTable = self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][0]
 		# FIXME: fix pg_comparator, so quoted column names work not only in diff, but also on sync 
 		# pk = ",".join( [ '"'+k+'"' for k in self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] ] )
 		# in the meanwhile, hope no column needs to be quoted
 		pk = ",".join( self.connections[dbi][1][pushDiffSchema][1][pushDiffTableName][1] )
-		pg_inputTableConnectString = pg_comparator_connect_string_for_table(self.inputTable, pk)
-		pg_outputTableConnectString = pg_comparator_connect_string_for_table(pushDiffTable, pk)
-		return (pg_inputTableConnectString, pg_outputTableConnectString, pushDiffTable)
+		pg_inputTableConnectString = pg_comparator_connect_string_for_table(self.inputTable.database().connection(), self.inputTable.uri().schema(), self.inputTable.name, pk)
+		pg_outputTableConnectString = pg_comparator_connect_string_for_table(self.connections[dbi][0], pushDiffSchema, pushDiffTableName, pk)
+		return (pg_inputTableConnectString, pg_outputTableConnectString) #, pushDiffTable)
 
 	def startCheck(self):
-		(pg_inputTableConnectString, pg_outputTableConnectString, outputTable) = self.get_pg_arguments()
+		# (pg_inputTableConnectString, pg_outputTableConnectString, outputTable) = self.get_pg_arguments()
+		(pg_inputTableConnectString, pg_outputTableConnectString) = self.get_pg_arguments()
 		if not ( pg_inputTableConnectString and pg_outputTableConnectString):
 			return
 		self.enableControls(False)
 
 		self.checkThread = QThread()
-		self.checkWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, outputTable, self.tr)
+		# self.checkWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, outputTable, self.tr)
+		self.checkWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, self.tr)
 
 		self.checkWorker.moveToThread(self.checkThread)
 		self.checkWorker.printMessage.connect(self.printMessage)
@@ -225,13 +231,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
-		(pg_inputTableConnectString, pg_outputTableConnectString, outputTable) = self.get_pg_arguments()
+		# (pg_inputTableConnectString, pg_outputTableConnectString, outputTable) = self.get_pg_arguments()
+		(pg_inputTableConnectString, pg_outputTableConnectString) = self.get_pg_arguments()
 		if not ( pg_inputTableConnectString and pg_outputTableConnectString):
 			return
 		self.enableControls(False)
 
 		self.syncThread = QThread()
-		self.syncWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, outputTable, self.tr)
+		# self.syncWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, outputTable, self.tr)
+		self.syncWorker = PGComparatorWorker(pg_inputTableConnectString, pg_outputTableConnectString, self.tr)
 
 		self.syncWorker.moveToThread(self.syncThread)
 		self.syncWorker.printMessage.connect(self.printMessage)
@@ -260,11 +268,12 @@ class PGComparatorWorker(QObject):
 	clearMessages = pyqtSignal()
 	synced = pyqtSignal(bool, int, int, int, bool)	# success, INSERTs, UPDATEs, DELETEs, has INSERT;UPDATE;DELETE privileges
 
-	def __init__(self, inputUri, outputUri, outputTable, tr):
+	# def __init__(self, inputUri, outputUri, outputTable, tr):
+	def __init__(self, inputUri, outputUri, tr):
 		QObject.__init__(self)
 		self.inputUri = inputUri
 		self.outputUri = outputUri
-		self.outputTable = outputTable
+		# self.outputTable = outputTable
 		self.tr = tr	# TODO: i hope it doesn't alter any state, so is threadsafe - check this 
 						# (can be caching on-demand translating)
 
@@ -314,8 +323,10 @@ class PGComparatorWorker(QObject):
 		if rest_error:
 			text += "\n" + self.tr("Final error messages") + ":\n" + rest_error
 		self.printMessage.emit(text)
-		has_privileges = all(self.outputTable.database().connector.getTablePrivileges( (self.outputTable.schema().name, self.outputTable.name) ))
-		self.synced.emit(retcode == 0, inserts[0], updates[0], deletes[0], has_privileges)
+		# XXX
+		# has_privileges = all(self.outputTable.database().connector.getTablePrivileges( (self.outputTable.schema().name, self.outputTable.name) ))
+		# self.synced.emit(retcode == 0, inserts[0], updates[0], deletes[0], has_privileges)
+		self.synced.emit(retcode == 0, inserts[0], updates[0], deletes[0], True)
 		self.finished.emit()
 
 class DBScanForPushCompatibleTables(QObject):
@@ -331,82 +342,198 @@ class DBScanForPushCompatibleTables(QObject):
 
 	@pyqtSlot()
 	def process(self):
-		# TODO: add arguments (, inputTable, tr): -> make this function stateless 
-		#   (and allow for more worker threads at once)
 		self.clearMessages.emit()
-		# FIXME:
-		# use something like [ q.data(0) for q in self.parent().tree.model().rootItem.children() ] == ['PostGIS', 'SpatiaLite']
-		# DBManager.(DBTree)tree.setModel(DBModel(mainWindow=DBManager)).PluginItem()
-		# don't generate from start.
-		# find out, where in DTree are connections stored (if we can rely on them beeing already populated, which 
-		# can not be the case)
-		# Maybe refactor out the get all db connections functionality (this is not the right place)
-		# If possible, cache results (i.e. in the case of remote DB connection and 10000 tables there).
+		self.compatibleConnections = []
+		# enclose all code in try/except, so as to finish thread in the case of exception
+		try:
+			# data is stored in self.compatibleConnections, in structure:
+			#	self.connection = [ (connection, schemas )]
+			#                                    schemas = { name: (schema, compatible_tables) }
+			#                                                               compatible_tables = { table_name: (table, [PKs]) }
 
-		# data is stored in self.connections, in structure:
-		#	self.connection = [ (connection, schemas )]
-		#                                    schemas = { name: (schema, compatible_tables) }
-		#                                                               compatible_tables = { table_name: (table, [PKs]) }
-
-		inputTableUri = self.inputTable.uri().uri()
-
-		inputTableFieldsDefs = [ (f.name, f.dataType, f.primaryKey ) for f in self.inputTable.fields() ]
-		# not using more precise f.definition(), because sequencer name
-		# differs, and is part of fields default value
-
-		# primary key can be composite
-		inputTablePK = [ f.name for f in self.inputTable.fields() if f.primaryKey ]
-		self.connections = []
-		if len(inputTablePK) == 0:
-			self.printMessage.emit(
-				self.tr("ERROR: Source table must have simple primary key column, and it has none."))
-		else:
-			dbpluginclass = createDbPlugin( "postgis" )
-			for connection in dbpluginclass.connections(): # might not be threadsafe
-				self.printMessage.emit(self.tr("Checking DB connection %s") % connection.connectionName())
-				if connection.database() == None:
-					# connect to database
-					try:
-						if not connection.connect():
-							self.printMessage.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
-							continue
-					except BaseError, e:
-						self.printMessage.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
-						continue
-				if connection.database().connector.hasComparatorSupport():
-					schemas = {}
-					db = connection.database()
-					schemas_ = db.schemas()
-					for schema in schemas_:
-						self.printMessage.emit(self.tr("Checking schema %s in connection %s") % (schema.name, connection.connectionName()))
-						tables = {}
-						tables_ = schema.tables()
-						for table in tables_:
-							if table.uri().uri() == inputTableUri:
-								self.printMessage.emit(self.tr("Table %s is source table - skipping") % table.name)
-								continue # skip source
-							fieldsDefs = [ (f.name, f.dataType, f.primaryKey) for f in table.fields() ]
-							if fieldsDefs != inputTableFieldsDefs:
-								self.printMessage.emit(self.tr("Table %s is not compatible - skipping") % table.name)
+			# pre-check table for primary key, so as to skip database scans
+			# primary key can be composite
+			inputTablePK = [ f.name for f in self.inputTable.fields() if f.primaryKey ]
+			if len(inputTablePK) == 0:
+				self.printMessage.emit(
+					self.tr("ERROR: Source table must have simple primary key column, and it has none."))
+			else:
+				dbpluginclass = createDbPlugin( "postgis" )
+				# connections[connectionName()] = getSchemaTableFieldInformation(...)
+				connections = {}
+				for connection in dbpluginclass.connections(): # TODO: might not be threadsafe
+					self.printMessage.emit(self.tr("Checking DB connection %s") % connection.connectionName())
+					if connection.database() == None:
+						# connect to database
+						try:
+							if not connection.connect():
+								self.printMessage.emit(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName() )
 								continue
-							tables[table.name] = (table, inputTablePK)
-							self.printMessage.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (table.name, schema.name, connection.connectionName()))
+						except BaseError, e:
+							self.printMessage.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
+							continue
+					if connection.database().connector.hasComparatorSupport():
+						self.printMessage.emit(self.tr("Getting DB information from: %s") % connection.connectionName())
+						# XXX dostan neskor dbname, host, port password info alebo z connection, alebo ho sem rovno uloz
+						connections[connection.connectionName()] = (connection, self.getSchemaTableFieldInformation(connection.database().connector))
+					else:
+						self.printMessage.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
+
+				inputTable = connections[self.inputTable.database().connection().connectionName()][1][self.inputTable.schemaName()][self.inputTable.name]
+				inputTableFields = frozenset(inputTable[0].values())
+				inputTablePKs = inputTable[1]
+
+				for connectionName, (connection, schemas_) in connections.iteritems():
+					self.printMessage.emit(self.tr("Searching for compatible table in DB: %s") % connectionName)
+					# pyqtRemoveInputHook()
+					# pdb.set_trace()
+
+					schemas = {}
+					for schemaName in schemas_.keys():
+						self.printMessage.emit(self.tr("Checking schema %s in connection %s") % (schemaName, connectionName))
+						tables = {}
+						for tableName, table in schemas_[schemaName].iteritems():
+							if table is inputTable:
+								self.printMessage.emit(self.tr("Table %s is source table - skipping") % tableName)
+								continue # skip source
+							if inputTableFields != frozenset(table[0].values()):
+								self.printMessage.emit(self.tr("Table %s is not column compatible - skipping") % tableName)
+								continue
+							if inputTablePKs != table[1]:
+								self.printMessage.emit(self.tr("Table %s is column compatible, but has not the same primary keys - skipping") % tableName)
+								continue
+							tables[tableName] = (tableName, inputTablePKs)
+							self.printMessage.emit(self.tr("Compatible table %s found in schema %s in connection %s") % (tableName, schemaName, connectionName))
 						if tables:
-							schemas[schema.name] = (schema, tables)
+							schemas[schemaName] = (schemaName, tables)
 						else:
-							self.printMessage.emit(self.tr("Skipping schema %s, no compatible table") % schema.name)
+							self.printMessage.emit(self.tr("Skipping schema %s, no compatible table") % schemaName)
 					if schemas:
-						self.connections.append((connection, schemas))
+						self.compatibleConnections.append((connection, schemas))
 					else:
 						self.printMessage.emit(self.tr("Skipping connection %s, no compatible table in its schemas") % connection.connectionName())
-				else:
-					self.printMessage.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
-			if not self.connections:
-				self.printMessage.emit(self.tr("No compatible tables found in any database"))
-		self.printMessage.emit(self.tr("Scanning for tables finished."))
-		self.printMessage.emit("")
-		self.dbDataCreated.emit(self.connections)
-		self.finished.emit()
+
+
+				if not self.compatibleConnections:
+					self.printMessage.emit(self.tr("No compatible tables found in any database"))
+		except Exception, e:
+			self.printMessage.emit(self.tr("ERROR while scanning DB: ") + unicode(e))
+			self.printMessage.emit(traceback.format_exc(e))
+			self.compatibleConnections = []
+		finally:
+			self.printMessage.emit(self.tr("Scanning for tables finished."))
+			self.printMessage.emit("")
+			self.dbDataCreated.emit(self.compatibleConnections)
+			self.finished.emit()
+
+	# returns for database connector:
+	# schemas = { name: (schema,	tables) }
+	# 								tables = { table_name: [	fields, set( names of PK columns ) ] }
+	#															fields = { order:( name, type ) }
+	def getSchemaTableFieldInformation(self, connector):
+		ignored_tables = ",".join(
+			[ "'" + t + "'" for t in
+				[ "spatial_ref_sys", "geography_columns", "geometry_columns", "raster_columns", "raster_overviews" ]
+			]);
+
+		# # We don't need tables at all
+		# # get all tables: (schema, name, isRegular)
+		# sql = u"""
+		# 	SELECT
+		# 		nsp.nspname,
+		# 		cla.relname,
+		# 		cla.relkind = 'r' isregulartable
+		# 	--	,
+		# 	--	pg_get_userbyid(cla.relowner) relowner
+		# 	FROM pg_class AS cla
+		# 	JOIN pg_namespace AS nsp ON nsp.oid = cla.relnamespace
+		# 	WHERE
+		# 			cla.relkind IN ('v', 'r', 'm')
+		# 		AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
+		# 		AND pg_get_userbyid(cla.relowner) != 'postgres'
+		# 		AND cla.relname not in (""" +  ignored_tables + ")"
+
+		# c = connector._execute(None, sql)
+		# tables = connector._fetchall(c)
+		# connector._close_cursor(c)
+
+		# FIXME: tables can be considered compatible, if equals for each column: pg_type.atttypid, or format_type(a.atttypid,a.atttypmod) ?
+		# get columns: (schema, table, position, name, formatted_type)
+		sql = u"""
+			SELECT
+				nsp.nspname AS nspname,
+				c.relname AS relname,
+				a.attnum AS ordinal_position,
+				a.attname AS column_name,
+		--		t.typname AS data_type,
+				pg_catalog.format_type(a.atttypid,a.atttypmod) AS formatted_type
+			FROM pg_class c
+			JOIN pg_attribute a ON a.attrelid = c.oid
+		--	JOIN pg_type t ON a.atttypid = t.oid
+			JOIN pg_namespace nsp ON c.relnamespace = nsp.oid
+			WHERE
+					c.relname not in (""" + ignored_tables + """)
+				AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
+				AND a.attnum > 0
+			"""
+
+		c = connector._execute(None, sql)
+		fields = connector._fetchall(c)
+		connector._close_cursor(c)
+
+		# get primary keys: ( schema, table, PKname, "col1pos col2pos ..." )
+		sql = u"""
+			SELECT
+				nsp.nspname,
+				t.relname,
+				c.conname,
+				array_to_string(c.conkey, ' ')
+			FROM pg_constraint c
+			JOIN pg_class t ON c.conrelid = t.oid
+			JOIN pg_namespace nsp ON c.connamespace = nsp.oid
+			WHERE
+					c.contype = 'p'
+				AND t.relkind IN ('v', 'r', 'm')
+				AND ( nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_' )
+				AND t.relname not in (""" +  ignored_tables + ")"
+
+
+		c = connector._execute(None, sql)
+		primaryKeys = connector._fetchall(c)
+		connector._close_cursor(c)
+
+		# schemas = { name: (schema,	tables) }
+		# 								tables = { table_name: [	fields, set( names of PK columns ) ] }
+		#															fields = { order:( name, type ) }
+		schemas = {}
+		def getSchema(schemaName):
+			if not schemas.has_key(schemaName):
+				schemas[schemaName] = {}
+			return schemas[schemaName]
+
+		def getTable(schemaName, tableName):
+			schema = getSchema(schemaName)
+			if not schema.has_key(tableName):
+				schema[tableName] = [{},None]
+			return schema[tableName]
+
+		for field in fields:
+			self.printMessage.emit(self.tr("Schema: %s  Table: %s  Field: %s Name: %s Type:%s") % tuple(field))
+			# getTable(field[0],field[1])[0][field[2]] = ( field[3], field[4] )
+			tableFields = getTable(field[0],field[1])[0]
+			assert not tableFields.has_key(field[2])
+			tableFields[field[2]] = ( field[3], field[4] )
+
+		import binascii
+		for pk in primaryKeys:
+			self.printMessage.emit(self.tr("Schema: %s  Table: %s  PK: %s") % tuple(pk[0:3]))
+			table = getTable(pk[0],pk[1])
+			assert table[1] is None
+			table[1] = frozenset([	table[0][int(fieldOrder)][0]
+									if table[0].has_key(int(fieldOrder))
+									else "MISSING_FIELD_rnd"+binascii.b2a_hex(os.urandom(3))
+										for fieldOrder in pk[3].split(" ") ])
+		return schemas
 
 
 def check_pg_comparator_presence():
@@ -416,5 +543,4 @@ def check_pg_comparator_presence():
 	except OSError as e:
 		retcode = -1
 	return retcode == 0
-
 

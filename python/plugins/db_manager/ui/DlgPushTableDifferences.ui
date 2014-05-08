@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>769</width>
-    <height>585</height>
+    <width>515</width>
+    <height>517</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -103,8 +103,18 @@
      <property name="title">
       <string>Options</string>
      </property>
-     <layout class="QVBoxLayout" name="verticalLayout_2">
-      <item>
+     <layout class="QGridLayout" name="gridLayout">
+      <item row="1" column="0">
+       <widget class="QLabel" name="labelPKField">
+        <property name="text">
+         <string>field to use as primary key:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="cboPKField"/>
+      </item>
+      <item row="0" column="0">
        <widget class="QCheckBox" name="chboxLockTables">
         <property name="text">
          <string>Lock tables</string>

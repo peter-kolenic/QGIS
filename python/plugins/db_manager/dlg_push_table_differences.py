@@ -40,12 +40,13 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		QDialog.__init__(self, parent)
 		self.inputTable = inputTable
 
-		if not [ f for f in self.inputTable.fields() if f.primaryKey ]:
-			QMessageBox.warning( None,
-				self.tr("Table error"),
-				self.tr("unable to push differences - table doesn't have primary key column"))
-			QMetaObject.invokeMethod(self, "close", Qt.QueuedConnection)
-			return
+		# Views don't have primary columns
+		# if not [ f for f in self.inputTable.fields() if f.primaryKey ]:
+		# 	QMessageBox.warning( None,
+		# 		self.tr("Table error"),
+		# 		self.tr("unable to push differences - table doesn't have primary key column"))
+		# 	QMetaObject.invokeMethod(self, "close", Qt.QueuedConnection)
+		# 	return
 
 		self.setupUi(self)
 		self.checkButton = QPushButton(_fromUtf8("&Check differences"))
@@ -58,6 +59,11 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.syncButton.setText(QApplication.translate("DbManagerDlgPushTableDifferences",
 			"&Push differences", None, QApplication.UnicodeUTF8))
 		self.connect(self.syncButton, SIGNAL("clicked()"), self.startSync)
+
+
+		# *PKField is hidden for regular tables, only show when view is source
+		self.labelPKField.hide()
+		self.cboPKField.hide()
 
 		self.populateData()
 
@@ -109,7 +115,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def dataReady(self, data):
 		self.dbs, self.input_table = data
-		if not self.dbs or self.dbs.isEmpty():
+		if not self.dbs or self.dbs.is_empty():
 			self.printMessage(self.tr("Table error - no compatible table to push to found"))
 			self.enableControls(enable=False, resetMouseCursor=True)
 		else:
@@ -118,6 +124,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.populateDatabases()
 			self.populateSchemas()
 			self.populateTables()
+			if self.input_table.is_view():
+				self.labelPKField.show()
+				self.cboPKField.show()
+				self.cboPKField.clear()
+				for f in  list(self.input_table.fields()):
+					self.cboPKField.addItem(f.field_name)
+				# do not pretend we have any idea what should be used as key
+				# FIXME: candidates can be pre-computed 
+				self.cboPKField.setCurrentIndex(-1)
 
 	def populateDatabases(self):
 		self.cboDatabase.clear()
@@ -156,16 +171,17 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			return (None, None)
 
 		output_table = self.dbs.get_table(db, pushDiffSchemaName, pushDiffTableName)
-		return (self.input_table, output_table, self.chboxLockTables.isChecked())
+		force_pk = [ self.cboPKField.currentText() ] if self.input_table.is_view() else None
+		return (self.input_table, output_table, self.chboxLockTables.isChecked(), force_pk)
 
 	def startCheck(self):
-		(input_table, output_table, lock_tables) = self.get_pg_arguments()
+		(input_table, output_table, lock_tables, force_pk) = self.get_pg_arguments()
 		if not (input_table and output_table):
 			return
 		self.enableControls(False)
 
 		self.checkThread = QThread()
-		self.checkWorker = PGComparatorWorker(input_table, output_table, lock_tables, self.tr)
+		self.checkWorker = PGComparatorWorker(input_table, output_table, lock_tables, force_pk, self.tr)
 
 		self.checkWorker.moveToThread(self.checkThread)
 		self.checkWorker.printMessage.connect(self.printMessage)
@@ -195,13 +211,13 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
-		(input_table, output_table, lock_tables) = self.get_pg_arguments()
+		(input_table, output_table, lock_tables, force_pk) = self.get_pg_arguments()
 		if not (input_table and output_table):
 			return
 		self.enableControls(False)
 
 		self.syncThread = QThread()
-		self.syncWorker = PGComparatorWorker(input_table, output_table, lock_tables, self.tr)
+		self.syncWorker = PGComparatorWorker(input_table, output_table, lock_tables, force_pk, self.tr)
 
 		self.syncWorker.moveToThread(self.syncThread)
 		self.syncWorker.printMessage.connect(self.printMessage)
@@ -229,11 +245,12 @@ class PGComparatorWorker(QObject):
 	clearMessages = pyqtSignal()
 	synced = pyqtSignal(bool, int, int, int, bool)	# success, INSERTs, UPDATEs, DELETEs, has SELECT;INSERT;UPDATE;DELETE privileges
 
-	def __init__(self, inputTable, outputTable, lock, tr):
+	def __init__(self, inputTable, outputTable, lock, force_pk, tr):
 		QObject.__init__(self)
 		self.inputTable = inputTable
 		self.outputTable = outputTable
 		self.lock = lock
+		self.force_pk = force_pk 
 		self.tr = tr	# TODO: i hope it doesn't alter any state, so is threadsafe - check this 
 						# (can be caching on-demand translating)
 
@@ -247,7 +264,10 @@ class PGComparatorWorker(QObject):
 
 	@pyqtSlot(bool)
 	def process(self, do_it=False):
-		pg_call = ["pg_comparator", "--no-lock", "--debug", "--verbose", "--verbose", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputTable.pg_comparator_connect_string(), self.outputTable.pg_comparator_connect_string()]
+		pg_call = ["pg_comparator", "--no-lock", "--debug", "--verbose", "--verbose", "--max-ratio", 
+					str(PG_COMPARE_MAX_RATIO),
+					self.inputTable.pg_comparator_connect_string(force_pk = self.force_pk),
+					self.outputTable.pg_comparator_connect_string(force_pk = self.force_pk)]
 		if do_it:
 			pg_call[7:7] = ["-S", "-D"]
 		if self.lock:
@@ -333,7 +353,7 @@ class DBScanForPushCompatibleTables(QObject):
 
 			self.compatible_connections, self.input_table = connections.get_compatible_tables(*self.input_table_names)
 
-			if not self.compatible_connections or self.compatible_connections.isEmpty():
+			if not self.compatible_connections or self.compatible_connections.is_empty():
 				self.printMessage.emit(self.tr("No compatible tables found in any database"))
 		except Exception, e:
 			self.printMessage.emit(self.tr("ERROR while scanning DB: ") + unicode(e))
@@ -366,7 +386,7 @@ class DBs(object):
 		self.dbs[connection.connectionName()] = self.get_schema_table_field_information(connection.database().connector)
 
 
-	def isEmpty(self):
+	def is_empty(self):
 		for con in self.dbs.values():
 			for schema in con.schemas().values():
 				for table in schema.tables().values():
@@ -401,10 +421,14 @@ class DBs(object):
 					if table is input_table:
 						self.print_message(self.tr("Table %s is source table - skipping") % table_name)
 						continue # skip source
+					if table.is_view():
+						self.print_message(self.tr("Push into views is not supported: %s - skipping") % table_name)
+						continue
 					if input_table_fields != table.fields():
 						self.print_message(self.tr("Table %s is not column compatible - skipping") % table_name)
 						continue
-					if input_table_pks != table.pks():
+					# PKs compatibility is checked only for regular tables
+					if not input_table.is_view() and input_table_pks != table.pks():
 						self.print_message(self.tr("Table %s is column compatible, but has not the same primary keys - skipping") % table_name)
 						continue
 					dbs.add_table(connection_name, table)
@@ -442,26 +466,32 @@ class DBs(object):
 				[ "spatial_ref_sys", "geography_columns", "geometry_columns", "raster_columns", "raster_overviews" ]
 			]);
 
-		# # We don't need list of tables at all. We don't care about columnless tables.
-		# # get all tables: (schema, name, isRegular)
-		# sql = u"""
-		# 	SELECT
-		# 		nsp.nspname,
-		# 		cla.relname,
-		# 		cla.relkind = 'r' isregulartable
-		# 	--	,
-		# 	--	pg_get_userbyid(cla.relowner) relowner
-		# 	FROM pg_class AS cla
-		# 	JOIN pg_namespace AS nsp ON nsp.oid = cla.relnamespace
-		# 	WHERE
-		# 			cla.relkind IN ('v', 'r', 'm')
-		# 		AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
-		# 		AND pg_get_userbyid(cla.relowner) != 'postgres'
-		# 		AND cla.relname not in (""" +  ignored_tables + ")"
+		db = DB(connector = connector)
 
-		# c = connector._execute(None, sql)
-		# tables = connector._fetchall(c)
-		# connector._close_cursor(c)
+		# get all tables: (schema, name, isRegular) - we need this only for check whether entry is view or regular table
+		# views and materialized views can be source.
+		# FIXME: it could be possible for views and materialized views to be compared against. 
+		sql = u"""
+			SELECT
+				nsp.nspname,
+				cla.relname,
+				cla.relkind = 'r' isregulartable
+			--	,
+			--	pg_get_userbyid(cla.relowner) relowner
+			FROM pg_class AS cla
+			JOIN pg_namespace AS nsp ON nsp.oid = cla.relnamespace
+			WHERE
+					cla.relkind IN ('v', 'r', 'm')
+				AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
+				AND pg_get_userbyid(cla.relowner) != 'postgres'
+				AND cla.relname not in (""" +  ignored_tables + ")"
+
+		c = connector._execute(None, sql)
+		tables = connector._fetchall(c)
+		connector._close_cursor(c)
+
+		for table in tables:
+			db.get_or_create_schema(table[0]).get_or_create_table(table[1], not table[2])
 
 		# FIXME: tables can be considered compatible, if equals for each column: pg_type.atttypid, or format_type(a.atttypid,a.atttypmod) ?
 		# get columns: (schema, table, position, name, formatted_type)
@@ -488,7 +518,6 @@ class DBs(object):
 		fields = connector._fetchall(c)
 		connector._close_cursor(c)
 
-		db = DB(connector = connector)
 		for field in fields:
 			# self.print_message(self.tr("Schema: %s  Table: %s  Field: %s Name: %s Type:%s") % tuple(field))
 			db.get_or_create_schema(field[0]).get_or_create_table(field[1]).add_field(field[2], field[3], field[4])
@@ -544,29 +573,34 @@ class Schema(object):
 		self.schema_name = schema_name
 		self._tables = {}
 
-	def get_or_create_table(self, table_name):
+	def get_or_create_table(self, table_name, is_view = False):
 		if not self._tables.has_key(table_name):
-			self._tables[table_name] = Table(table_name, schema = self)
+			self._tables[table_name] = Table(table_name, schema = self, is_view = is_view)
 		return self._tables[table_name]
 
 	def tables(self):
 		return self._tables
 
 class Table(object):
-	def __init__(self, table_name, schema = None):
+	def __init__(self, table_name, schema = None, is_view = False):
 		self.table_name = table_name
 		self._schema = schema
 		self._field_map = {}
 		self._primary_keys = None
+		self._is_view = is_view
 
-	def pg_comparator_connect_string(self):
+	def is_view(self):
+		return self._is_view
+
+	def pg_comparator_connect_string(self, force_pk = None):
 	# def pg_comparator_connect_string_for_table(connection, schema, table, pk):
 		(username, password, host, port, database) = self._schema._db.get_connect_params()
 
 		# FIXME: fix pg_comparator, so quoted column names work not only in diff, but also on sync
 		# pk = ",".join( [ '"'+k+'"' ...
 		# in the meanwhile, hope no column needs to be quoted
-		pk = ",".join(list(self._primary_keys))
+		# pk = ",".join(force_pk if force_pk else list(self._primary_keys))
+		pk = ",".join([ '"' + f + '"' for f in (force_pk if force_pk else list(self._primary_keys)) ]) 
 
 		# FIXME: escape [@"/:?] in password
 		# No fear of shell code injection, since Popen(shell=False)

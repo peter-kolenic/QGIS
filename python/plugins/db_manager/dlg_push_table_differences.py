@@ -72,6 +72,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def disableSyncButton(self):
 		self.syncButton.setEnabled(False)
+		self.chboxLockTables.setChecked(False)
+		self.chboxLockTables.setEnabled(False)
 
 	@pyqtSlot('QString')
 	def printMessage(self, text):
@@ -141,7 +143,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 		self.cboTable.setEnabled(bool(tables))
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
-	# return (inputUri,outputUri,outputTable)
+	# return (inputUri,outputUri,lockTables)
 	def get_pg_arguments(self):
 		db = self.cboDatabase.currentText()
 		pushDiffSchemaName = self.cboSchema.currentText()
@@ -154,16 +156,16 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			return (None, None)
 
 		output_table = self.dbs.get_table(db, pushDiffSchemaName, pushDiffTableName)
-		return (self.input_table, output_table)
+		return (self.input_table, output_table, self.chboxLockTables.isChecked())
 
 	def startCheck(self):
-		(input_table, output_table) = self.get_pg_arguments()
+		(input_table, output_table, lock_tables) = self.get_pg_arguments()
 		if not (input_table and output_table):
 			return
 		self.enableControls(False)
 
 		self.checkThread = QThread()
-		self.checkWorker = PGComparatorWorker(input_table, output_table, self.tr)
+		self.checkWorker = PGComparatorWorker(input_table, output_table, lock_tables, self.tr)
 
 		self.checkWorker.moveToThread(self.checkThread)
 		self.checkWorker.printMessage.connect(self.printMessage)
@@ -185,19 +187,21 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.printMessage(self.tr("Summary: inserts :%d  updates: %d  deletes: %d") % (inserts, updates, deletes))
 			if has_privileges:
 				self.syncButton.setEnabled(True)
+				self.chboxLockTables.setEnabled(True)
+				self.chboxLockTables.setChecked(False)
 			else:
 				self.printMessage(self.tr("Can't Push - missing privileges"))
 		else:
 			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
-		(input_table, output_table) = self.get_pg_arguments()
+		(input_table, output_table, lock_tables) = self.get_pg_arguments()
 		if not (input_table and output_table):
 			return
 		self.enableControls(False)
 
 		self.syncThread = QThread()
-		self.syncWorker = PGComparatorWorker(input_table, output_table, self.tr)
+		self.syncWorker = PGComparatorWorker(input_table, output_table, lock_tables, self.tr)
 
 		self.syncWorker.moveToThread(self.syncThread)
 		self.syncWorker.printMessage.connect(self.printMessage)
@@ -225,10 +229,11 @@ class PGComparatorWorker(QObject):
 	clearMessages = pyqtSignal()
 	synced = pyqtSignal(bool, int, int, int, bool)	# success, INSERTs, UPDATEs, DELETEs, has SELECT;INSERT;UPDATE;DELETE privileges
 
-	def __init__(self, inputTable, outputTable, tr):
+	def __init__(self, inputTable, outputTable, lock, tr):
 		QObject.__init__(self)
 		self.inputTable = inputTable
 		self.outputTable = outputTable
+		self.lock = lock
 		self.tr = tr	# TODO: i hope it doesn't alter any state, so is threadsafe - check this 
 						# (can be caching on-demand translating)
 
@@ -242,9 +247,11 @@ class PGComparatorWorker(QObject):
 
 	@pyqtSlot(bool)
 	def process(self, do_it=False):
-		pg_call = ["pg_comparator", "--debug", "--verbose", "--verbose", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputTable.pg_comparator_connect_string(), self.outputTable.pg_comparator_connect_string()]
+		pg_call = ["pg_comparator", "--no-lock", "--debug", "--verbose", "--verbose", "--max-ratio", str(PG_COMPARE_MAX_RATIO), self.inputTable.pg_comparator_connect_string(), self.outputTable.pg_comparator_connect_string()]
 		if do_it:
-			pg_call[6:6] = ["-S", "-D"]
+			pg_call[7:7] = ["-S", "-D"]
+		if self.lock:
+			pg_call[1] = "--lock"
 		self.clearMessages.emit()
 		self.printMessage.emit(" ".join(pg_call))
 		retcode = 0

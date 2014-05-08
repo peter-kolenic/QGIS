@@ -130,7 +130,7 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				self.cboPKField.clear()
 				for f in  list(self.input_table.fields()):
 					self.cboPKField.addItem(f.field_name)
-				# FIXME: candidates can be pre-computed 
+				# FIXME: candidates can be pre-computed
 				# do not allow any misunderstanding on user side that we have any idea
 				# what should be used as a key - no field is pre-selected
 				self.cboPKField.setCurrentIndex(-1)
@@ -256,7 +256,7 @@ class PGComparatorWorker(QObject):
 		self.inputTable = inputTable
 		self.outputTable = outputTable
 		self.lock = lock
-		self.force_pk = force_pk 
+		self.force_pk = force_pk
 		self.tr = tr	# TODO: i hope it doesn't alter any state, so is threadsafe - check this 
 						# (can be caching on-demand translating)
 
@@ -270,7 +270,7 @@ class PGComparatorWorker(QObject):
 
 	@pyqtSlot(bool)
 	def process(self, do_it=False):
-		pg_call = ["pg_comparator", "--no-lock", "--debug", "--verbose", "--verbose", "--max-ratio", 
+		pg_call = ["pg_comparator", "--no-lock", "--debug", "--verbose", "--verbose", "--max-ratio",
 					str(PG_COMPARE_MAX_RATIO),
 					self.inputTable.pg_comparator_connect_string(force_pk = self.force_pk),
 					self.outputTable.pg_comparator_connect_string(force_pk = self.force_pk)]
@@ -476,7 +476,7 @@ class DBs(object):
 
 		# get all tables: (schema, name, isRegular) - we need this only for check whether entry is view or regular table
 		# views and materialized views can be source.
-		# FIXME: it could be possible for views and materialized views to be compared against. 
+		# FIXME: it could be possible for views and materialized views to be compared against.
 		sql = u"""
 			SELECT
 				nsp.nspname,
@@ -606,7 +606,7 @@ class Table(object):
 		# pk = ",".join( [ '"'+k+'"' ...
 		# in the meanwhile, hope no column needs to be quoted
 		# pk = ",".join(force_pk if force_pk else list(self._primary_keys))
-		pk = ",".join([ '"' + f + '"' for f in (force_pk if force_pk else list(self._primary_keys)) ]) 
+		pk = ",".join([ '"' + f + '"' for f in (force_pk if force_pk else list(self._primary_keys)) ])
 
 		# FIXME: escape [@"/:?] in password
 		# No fear of shell code injection, since Popen(shell=False)

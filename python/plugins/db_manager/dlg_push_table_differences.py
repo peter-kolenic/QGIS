@@ -130,9 +130,15 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 				self.cboPKField.clear()
 				for f in  list(self.input_table.fields()):
 					self.cboPKField.addItem(f.field_name)
-				# do not pretend we have any idea what should be used as key
 				# FIXME: candidates can be pre-computed 
+				# do not allow any misunderstanding on user side that we have any idea
+				# what should be used as a key - no field is pre-selected
 				self.cboPKField.setCurrentIndex(-1)
+				# disable "Check" button until any field is selected
+				self.checkButton.setEnabled(False)
+				self.checkButton.connect(self.cboPKField, SIGNAL("currentIndexChanged(int)"), lambda: self.checkButton.setEnabled(True))
+				# disable "Sync" button on every change of PK field
+				self.checkButton.connect(self.cboPKField, SIGNAL("currentIndexChanged(int)"), lambda: self.syncButton.setEnabled(False))
 
 	def populateDatabases(self):
 		self.cboDatabase.clear()

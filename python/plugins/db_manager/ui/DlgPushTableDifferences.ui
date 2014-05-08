@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>628</width>
-    <height>575</height>
+    <width>769</width>
+    <height>585</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -99,6 +99,22 @@
     </widget>
    </item>
    <item>
+    <widget class="QGroupBox" name="groupBox_2">
+     <property name="title">
+      <string>Options</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
+       <widget class="QCheckBox" name="chboxLockTables">
+        <property name="text">
+         <string>Lock tables</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QDialogButtonBox" name="buttonBox">
      <property name="orientation">
       <enum>Qt::Horizontal</enum>
@@ -112,6 +128,7 @@
   <zorder>groupBox</zorder>
   <zorder>buttonBox</zorder>
   <zorder>groupBox_3</zorder>
+  <zorder>groupBox_2</zorder>
  </widget>
  <tabstops>
   <tabstop>buttonBox</tabstop>

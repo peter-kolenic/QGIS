@@ -501,25 +501,72 @@ class DBs(object):
 
 		# FIXME: tables can be considered compatible, if equals for each column: pg_type.atttypid, or format_type(a.atttypid,a.atttypmod) ?
 		# get columns: (schema, table, position, name, formatted_type)
+		# sql = u"""
+		# 	SELECT
+		# 		nsp.nspname AS nspname,
+		# 		c.relname AS relname,
+		# 		a.attnum AS ordinal_position,
+		# 		a.attname AS column_name,
+		# --		t.typname AS data_type,
+		# 		pg_catalog.format_type(a.atttypid,a.atttypmod) AS formatted_type
+		# 	FROM pg_class c
+		# 	JOIN pg_attribute a ON a.attrelid = c.oid
+		# --	JOIN pg_type t ON a.atttypid = t.oid
+		# 	JOIN pg_namespace nsp ON c.relnamespace = nsp.oid
+		# 	WHERE
+		# 			c.relname not in (""" + ignored_tables + """)
+		# 		AND c.relkind IN ('v', 'r', 'm')
+		# 		AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
+		# 		AND a.attnum > 0
+		# 	"""
+
 		sql = u"""
 			SELECT
-				nsp.nspname AS nspname,
-				c.relname AS relname,
-				a.attnum AS ordinal_position,
-				a.attname AS column_name,
-		--		t.typname AS data_type,
-				pg_catalog.format_type(a.atttypid,a.atttypmod) AS formatted_type
-			FROM pg_class c
-			JOIN pg_attribute a ON a.attrelid = c.oid
-		--	JOIN pg_type t ON a.atttypid = t.oid
-			JOIN pg_namespace nsp ON c.relnamespace = nsp.oid
-			WHERE
-					c.relname not in (""" + ignored_tables + """)
-				AND c.relkind IN ('v', 'r', 'm')
-				AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
-				AND a.attnum > 0
-			"""
-
+				table_schema,
+				TABLE_NAME,
+				ordinal_position,
+				COLUMN_NAME,
+				data_type
+			FROM information_schema.columns
+			WHERE table_schema NOT IN (	'pg_catalog',
+										'information_schema')
+				AND data_type NOT IN ('USER-DEFINED',
+									'ARRAY')
+			UNION
+			SELECT
+				table_schema,
+				TABLE_NAME,
+				ordinal_position,
+				COLUMN_NAME,
+				data_type ||'|'|| udt_name
+			FROM information_schema.columns
+			WHERE table_schema NOT IN (	'pg_catalog',
+										'information_schema')
+				AND data_type = 'USER-DEFINED'
+			UNION
+			SELECT
+				c.table_schema,
+				c.TABLE_NAME,
+				c.ordinal_position,
+				c.COLUMN_NAME,
+				c.data_type ||'|'|| c.udt_name ||'|'|| e.data_type
+			FROM information_schema.columns c
+			LEFT JOIN information_schema.element_types e
+			ON ((c.table_catalog,
+				c.table_schema,
+				c.TABLE_NAME,
+				'TABLE',
+				c.dtd_identifier)
+				=
+				(e.object_catalog,
+				e.object_schema,
+				e.object_name,
+				e.object_type,
+				e.collection_type_identifier))
+			WHERE c.table_schema NOT IN (	'pg_catalog',
+											'information_schema')
+				AND c.data_type = 'ARRAY'
+		"""
 		c = connector._execute(None, sql)
 		fields = connector._fetchall(c)
 		connector._close_cursor(c)

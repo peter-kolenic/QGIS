@@ -633,11 +633,10 @@ class Table(object):
 	# def pg_comparator_connect_string_for_table(connection, schema, table, pk):
 		(username, password, host, port, database) = self._schema._db.get_connect_params()
 
-		# FIXME: fix pg_comparator, so quoted column names work not only in diff, but also on sync
-		# pk = ",".join( [ '"'+k+'"' ...
-		# in the meanwhile, hope no column needs to be quoted
+		# FIXME: there is a bug in pg_comparator, quoted lowercase column names work only in diff, but not in sync.
+		# this is may-or-may-not-work workaround - quote field name iff not lowercase+_
+		pk = ",".join([ (f if f.islower() else '"' + f + '"')  for f in (force_pk if force_pk else list(self._primary_keys)) ])
 		# pk = ",".join(force_pk if force_pk else list(self._primary_keys))
-		pk = ",".join([ '"' + f + '"' for f in (force_pk if force_pk else list(self._primary_keys)) ])
 
 		# FIXME: escape [@"/:?] in password
 		# No fear of shell code injection, since Popen(shell=False)

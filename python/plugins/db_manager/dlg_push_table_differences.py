@@ -469,28 +469,23 @@ class DBs(object):
 	def get_schema_table_field_information(self, connector):
 		ignored_tables = ",".join(
 			[ "'" + t + "'" for t in
-				[ "spatial_ref_sys", "geography_columns", "geometry_columns", "raster_columns", "raster_overviews" ]
+				[ "spatial_ref_sys", "geography_columns", "geometry_columns", "raster_columns", "raster_overviews", "topology" ]
 			]);
 
 		db = DB(connector = connector)
 
 		# get all tables: (schema, name, isRegular) - we need this only for check whether entry is view or regular table
 		# views and materialized views can be source.
-		# FIXME: it could be possible for views and materialized views to be compared against.
+		# FIXME: it could be possible for views and materialized views to be compared against (i.e. target of Check, with no Push).
 		sql = u"""
-			SELECT
-				nsp.nspname,
-				cla.relname,
-				cla.relkind = 'r' isregulartable
-			--	,
-			--	pg_get_userbyid(cla.relowner) relowner
-			FROM pg_class AS cla
-			JOIN pg_namespace AS nsp ON nsp.oid = cla.relnamespace
-			WHERE
-					cla.relkind IN ('v', 'r', 'm')
-				AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
-				AND pg_get_userbyid(cla.relowner) != 'postgres'
-				AND cla.relname not in (""" +  ignored_tables + ")"
+			SELECT	table_schema,
+					table_name,
+					table_type = 'BASE TABLE'
+			FROM information_schema.tables
+			WHERE table_schema != 'information_schema'
+				AND table_schema !~ '^pg_'
+				AND table_name NOT IN (	""" + ignored_tables + """ )
+		"""
 
 		c = connector._execute(None, sql)
 		tables = connector._fetchall(c)
@@ -499,62 +494,44 @@ class DBs(object):
 		for table in tables:
 			db.get_or_create_schema(table[0]).get_or_create_table(table[1], not table[2])
 
-		# FIXME: tables can be considered compatible, if equals for each column: pg_type.atttypid, or format_type(a.atttypid,a.atttypmod) ?
-		# get columns: (schema, table, position, name, formatted_type)
-		# sql = u"""
-		# 	SELECT
-		# 		nsp.nspname AS nspname,
-		# 		c.relname AS relname,
-		# 		a.attnum AS ordinal_position,
-		# 		a.attname AS column_name,
-		# --		t.typname AS data_type,
-		# 		pg_catalog.format_type(a.atttypid,a.atttypmod) AS formatted_type
-		# 	FROM pg_class c
-		# 	JOIN pg_attribute a ON a.attrelid = c.oid
-		# --	JOIN pg_type t ON a.atttypid = t.oid
-		# 	JOIN pg_namespace nsp ON c.relnamespace = nsp.oid
-		# 	WHERE
-		# 			c.relname not in (""" + ignored_tables + """)
-		# 		AND c.relkind IN ('v', 'r', 'm')
-		# 		AND (nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_')
-		# 		AND a.attnum > 0
-		# 	"""
-
+		# get columns: (schema, table, position, name, type)
 		sql = u"""
 			SELECT
 				table_schema,
-				TABLE_NAME,
+				table_name,
 				ordinal_position,
-				COLUMN_NAME,
+				column_name,
 				data_type
 			FROM information_schema.columns
-			WHERE table_schema NOT IN (	'pg_catalog',
-										'information_schema')
+			WHERE	table_schema NOT IN (	'pg_catalog',
+											'information_schema')
+				AND table_name NOT IN ( """ + ignored_tables + """ )
 				AND data_type NOT IN ('USER-DEFINED',
 									'ARRAY')
 			UNION
 			SELECT
 				table_schema,
-				TABLE_NAME,
+				table_name,
 				ordinal_position,
-				COLUMN_NAME,
+				column_name,
 				data_type ||'|'|| udt_name
 			FROM information_schema.columns
-			WHERE table_schema NOT IN (	'pg_catalog',
-										'information_schema')
+			WHERE	table_schema NOT IN (	'pg_catalog',
+											'information_schema')
+				AND table_name NOT IN ( """ + ignored_tables + """ )
 				AND data_type = 'USER-DEFINED'
 			UNION
 			SELECT
 				c.table_schema,
-				c.TABLE_NAME,
+				c.table_name,
 				c.ordinal_position,
-				c.COLUMN_NAME,
+				c.column_name,
 				c.data_type ||'|'|| c.udt_name ||'|'|| e.data_type
 			FROM information_schema.columns c
 			LEFT JOIN information_schema.element_types e
 			ON ((c.table_catalog,
 				c.table_schema,
-				c.TABLE_NAME,
+				c.table_name,
 				'TABLE',
 				c.dtd_identifier)
 				=
@@ -563,8 +540,9 @@ class DBs(object):
 				e.object_name,
 				e.object_type,
 				e.collection_type_identifier))
-			WHERE c.table_schema NOT IN (	'pg_catalog',
+			WHERE	c.table_schema NOT IN (	'pg_catalog',
 											'information_schema')
+				AND table_name NOT IN ( """ + ignored_tables + """ )
 				AND c.data_type = 'ARRAY'
 		"""
 		c = connector._execute(None, sql)
@@ -575,22 +553,28 @@ class DBs(object):
 			# self.print_message(self.tr("Schema: %s  Table: %s  Field: %s Name: %s Type:%s") % tuple(field))
 			db.get_or_create_schema(field[0]).get_or_create_table(field[1]).add_field(field[2], field[3], field[4])
 
+
 		# get primary keys: ( schema, table, PKname, "col1pos col2pos ..." )
 		sql = u"""
-			SELECT
-				nsp.nspname,
-				t.relname,
-				c.conname,
-				array_to_string(c.conkey, ' ')
-			FROM pg_constraint c
-			JOIN pg_class t ON c.conrelid = t.oid
-			JOIN pg_namespace nsp ON c.connamespace = nsp.oid
-			WHERE
-					c.contype = 'p'
-				AND t.relkind IN ('v', 'r', 'm')
-				AND ( nsp.nspname != 'information_schema' AND nsp.nspname !~ '^pg_' )
-				AND t.relname not in (""" +  ignored_tables + ")"
-
+			SELECT	con.table_schema,
+					con.table_name,
+					con.constraint_name,
+					string_agg(to_char(kus.ordinal_position,'FM99'),' ')
+			FROM information_schema.table_constraints con
+			LEFT JOIN information_schema.key_column_usage kus ON ((	con.constraint_catalog,
+																	con.constraint_schema,
+																	con.constraint_name) = (kus.constraint_catalog,
+																							kus.constraint_schema,
+																							kus.constraint_name))
+			WHERE	con.constraint_type = 'PRIMARY KEY'
+					AND con.constraint_schema != 'information_schema'
+					AND con.constraint_schema !~ '^pg_'
+					AND con.table_name NOT IN ( """ + ignored_tables + """ ) 
+			GROUP BY
+					con.table_schema,
+					con.table_name,
+					con.constraint_name ;
+		"""
 		c = connector._execute(None, sql)
 		primaryKeys = connector._fetchall(c)
 		connector._close_cursor(c)

@@ -581,7 +581,7 @@ class DBs(object):
 
 		for pk in primaryKeys:
 			# self.print_message(self.tr("Schema: %s  Table: %s  PK: %s") % tuple(pk[0:3]))
-			db.get_or_create_schema(pk[0]).get_or_create_table(pk[1]).set_pk([int(f) for f in pk[3].split(" ")])
+			db.get_or_create_schema(pk[0]).get_or_create_table(pk[1]).set_pk([int(f) for f in pk[3].split()])
 
 		return db
 

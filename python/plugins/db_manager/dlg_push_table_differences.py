@@ -500,7 +500,7 @@ class DBs(object):
 				table_schema,
 				table_name,
 				ordinal_position,
-				column_name,
+				quote_ident(column_name),
 				data_type
 			FROM information_schema.columns
 			WHERE	table_schema NOT IN (	'pg_catalog',
@@ -513,7 +513,7 @@ class DBs(object):
 				table_schema,
 				table_name,
 				ordinal_position,
-				column_name,
+				quote_ident(column_name),
 				data_type ||'|'|| udt_name
 			FROM information_schema.columns
 			WHERE	table_schema NOT IN (	'pg_catalog',
@@ -525,7 +525,7 @@ class DBs(object):
 				c.table_schema,
 				c.table_name,
 				c.ordinal_position,
-				c.column_name,
+				quote_ident(c.column_name),
 				c.data_type ||'|'|| c.udt_name ||'|'|| e.data_type
 			FROM information_schema.columns c
 			LEFT JOIN information_schema.element_types e
@@ -632,12 +632,7 @@ class Table(object):
 	def pg_comparator_connect_string(self, force_pk = None):
 	# def pg_comparator_connect_string_for_table(connection, schema, table, pk):
 		(username, password, host, port, database) = self._schema._db.get_connect_params()
-
-		# FIXME: there is a bug in pg_comparator, quoted lowercase column names work only in diff, but not in sync.
-		# this is may-or-may-not-work workaround - quote field name iff not lowercase+_
-		pk = ",".join([ (f if f.islower() else '"' + f + '"')  for f in (force_pk if force_pk else list(self._primary_keys)) ])
-		# pk = ",".join(force_pk if force_pk else list(self._primary_keys))
-
+		pk = ",".join(force_pk if force_pk else list(self._primary_keys))
 		# FIXME: escape [@"/:?] in password
 		# No fear of shell code injection, since Popen(shell=False)
 		s = 'pgsql://%(login)s:%(pass)s@%(host)s:%(port)s/%(base)s/"%(schema)s"."%(table)s"?%(pk)s' % {

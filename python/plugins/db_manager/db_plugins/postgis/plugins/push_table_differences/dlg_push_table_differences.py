@@ -109,6 +109,28 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 			self.updateDataUI()
 			return
 
+		connection = self.databases[self.cboDatabase.currentText()][0]
+		connection_error = ""
+		for i in [1]:
+			if connection.database() == None:
+				try:
+					# connect to database
+					if not connection.connect():
+						connection_error = self.tr("Database error") + ": " + self.tr("unable to connect to ") + connection.connectionName()
+						# ": " is there so at least something is in error even in case of failure in self.tr
+						break
+				except BaseError, e:
+					connection_error = self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e)
+					break
+			if not connection.database().connector.hasComparatorSupport():
+				connection_error = self.tr("Database: ") + connection.connectionName() + self.tr(" doesn't have pg_comparator support.")
+				break
+		if connection_error:
+			self.printMessage(connection_error)
+			self.printMessage(self.tr("Not scannig this DB."))
+			self.updateDataUI()
+			return
+
 		# Scan DB connection for compatible tables.
 		# disable all controls
 		self.enableControls(False)
@@ -168,44 +190,42 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def populateDatabases(self):
 		input_connection = self.inputTable.database().connection()
-		if not input_connection.database().connector.hasComparatorSupport():
+		try:
+			if input_connection.database() == None:
+				# connect to database
+				if not input_connection.connect():
+					raise Exception, self.tr("Unable to connect to source DB: ") + input_connection.connectionName()
+				if not input_connection.database().connector.hasComparatorSupport():
+					raise Exception, self.tr("source database doesn't have pg_comparator support")
+		except Exception, e:
+			self.printMessage(self.tr("ERROR: ") + unicode(e))
 			QMessageBox.warning( None,
-				self.tr("Table error"),
-				self.tr("unable to push differences - source database doesn't have pg_comparator support"))
+				self.tr("DB error"),
+				unicode(e))
 			QMetaObject.invokeMethod(self, "close", Qt.QueuedConnection)
-		else:
-			self.enableControls(False)
-			self.cboDatabase.clear()
-			self.databases = {}
-			dbpluginclass = createDbPlugin("postgis")
-			for connection in dbpluginclass.connections():
-				self.printMessage(self.tr("Checking DB connection %s") % connection.connectionName())
-				if connection.database() == None:
-					# connect to database
-					try:
-						if not connection.connect():
-							self.printMessage(self.tr("Database connection error ") + self.tr("Unable to connect to ") + connection.connectionName())
-							continue
-					except BaseError, e:
-						self.printMessage(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e))
-						continue
-				if connection.database().connector.hasComparatorSupport():
-					self.databases[connection.connectionName()] = [connection, None]
+			return
 
-			for connection in self.databases.keys():
-				self.cboDatabase.addItem(connection)
+		self.enableControls(False)
+		self.cboDatabase.clear()
+		self.databases = {}
+		dbpluginclass = createDbPlugin("postgis")
+		for connection in dbpluginclass.connections():
+			self.databases[connection.connectionName()] = [connection, None]
+			self.cboDatabase.addItem(connection.connectionName())
 
-			input_database = DBs(print_message_callback = self.printMessage, tr = self.tr)
-			self.printMessage(self.tr("Scanning source database"))
-			input_database.add_and_scan(input_connection)
-			self.input_table_ref = input_database.get_table(input_connection.connectionName(), self.inputTable.schemaName(), self.inputTable.name)
-			self.databases[input_connection.connectionName()][1] = input_database.get_compatible_tables_by_ref(self.input_table_ref)
-			self.cboDatabase.setEnabled(True)
-			QApplication.restoreOverrideCursor()
-			self.cboDatabase.setCurrentIndex(-1)
+		input_database = DBs(print_message_callback = self.printMessage, tr = self.tr)
+		self.printMessage(self.tr("Scanning source database"))
+		input_database.add_and_scan(input_connection)
+		self.input_table_ref = input_database.get_table(input_connection.connectionName(), self.inputTable.schemaName(), self.inputTable.name)
+		self.databases[input_connection.connectionName()][1] = input_database.get_compatible_tables_by_ref(self.input_table_ref)
+		self.cboDatabase.setEnabled(True)
+		QApplication.restoreOverrideCursor()
+		self.cboDatabase.setCurrentIndex(-1)
 
 	def populateSchemas(self):
 		self.cboSchema.clear()
+		if not self.dbs():
+			return
 		schemas = self.dbs().get_schema_names_for_db_connection(self.cboDatabase.currentText())
 		if schemas:
 			for schema in schemas:
@@ -215,6 +235,8 @@ class DlgPushTableDifferences(QDialog, Ui_Dialog):
 
 	def populateTables(self):
 		self.cboTable.clear()
+		if not self.dbs():
+			return
 		tables = self.dbs().get_table_names_for_db_schema(self.cboDatabase.currentText(), self.cboSchema.currentText())
 		if tables:
 			for table in tables:

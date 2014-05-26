@@ -33,7 +33,7 @@ from .db_tree import DBTree
 
 from .db_plugins.plugin import BaseError
 from .dlg_db_error import DlgDbError
-from .dlg_push_table_differences import check_pg_comparator_presence
+from .db_plugins.postgis.plugins.push_table_differences.dlg_push_table_differences import check_pg_comparator_presence
 
 
 class DBManager(QMainWindow):
@@ -190,7 +190,7 @@ class DBManager(QMainWindow):
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("Selected database doesn't contain differences support."))
 			return
 
-		from .dlg_push_table_differences import DlgPushTableDifferences
+		from .db_plugins.postgis.plugins.push_table_differences.dlg_push_table_differences import DlgPushTableDifferences
 		dlg = DlgPushTableDifferences(table, self)
 		dlg.exec_()
 

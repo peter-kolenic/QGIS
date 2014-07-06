@@ -168,7 +168,7 @@ class PGDatabase(Database):
 			separator.setSeparator(True)
 			mainWindow.registerAction( separator, self.tr("&Table") )
 			action = QAction(self.tr("Push to other table"), self)
-			mainWindow.registerAction( action, self.tr("&Table"), mainWindow.pushTableDifferencesActionSlot )
+			mainWindow.registerAction( action, self.tr("&Table"), mainWindow.pushTableActionSlot )
 			separator = QAction(self);
 			separator.setSeparator(True)
 			mainWindow.registerAction( separator, self.tr("&Table") )

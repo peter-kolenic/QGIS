@@ -33,7 +33,7 @@ from .db_tree import DBTree
 
 from .db_plugins.plugin import BaseError
 from .dlg_db_error import DlgDbError
-from .db_plugins.postgis.plugins.push_table_differences.dlg_push_table_differences import check_pg_comparator_presence
+from .db_plugins.postgis.plugins.push_table import check_pg_comparator_presence
 
 
 class DBManager(QMainWindow):
@@ -177,21 +177,21 @@ class DBManager(QMainWindow):
 
 	# FIXME: 3 ignored params, so self.invokeCallback (used by registerAction, used by db_plugins/postgis/plugin to register action to table)
 	# won't fail
-	def pushTableDifferencesActionSlot(self, ignored1=None, ignored2=None, ignored3=None): 
+	def pushTableActionSlot(self, ignored1=None, ignored2=None, ignored3=None):
 		QApplication.restoreOverrideCursor() # if we are called from self.invokeCallback, we get waiting cursor
 		if not self.pushTableEnabled:
-			QMessageBox.information(self, self.tr("Sorry"), self.tr("Push table differences is disabled."))
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("Push table is disabled."))
 			return
 		table = self.tree.currentTable()
 		if table is None:
 			QMessageBox.information(self, self.tr("Sorry"), self.tr("No table selected or you are not connected to any database."))
 			return
 		if not table.database().connector.hasComparatorSupport():
-			QMessageBox.information(self, self.tr("Sorry"), self.tr("Selected database doesn't contain differences support."))
+			QMessageBox.information(self, self.tr("Sorry"), self.tr("Selected database doesn't contain push table support."))
 			return
 
-		from .db_plugins.postgis.plugins.push_table_differences.dlg_push_table_differences import DlgPushTableDifferences
-		dlg = DlgPushTableDifferences(table, self)
+		from .db_plugins.postgis.plugins.push_table.dlg_push_table import DlgPushTable
+		dlg = DlgPushTable(table, self)
 		dlg.exec_()
 
 	def runSqlWindow(self):
@@ -416,7 +416,7 @@ class DBManager(QMainWindow):
 		self.actionImport = self.menuTable.addAction( QIcon(":/db_manager/actions/import"), self.tr("&Import layer/file"), self.importActionSlot )
 		self.actionExport = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Export to file"), self.exportActionSlot )
 		# if self.pushTableEnabled:
-		# 	self.actionPushTableDifferences = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push to other table 2"), self.pushTableDifferencesActionSlot )
+		# 	self.actionPushTable = self.menuTable.addAction( QIcon(":/db_manager/actions/export"), self.tr("&Push to other table 2"), self.pushTableActionSlot )
 		self.menuTable.addSeparator()
 		#self.actionShowSystemTables = self.menuTable.addAction(self.tr("Show system tables/views"), self.showSystemTables)
 		#self.actionShowSystemTables.setCheckable(True)

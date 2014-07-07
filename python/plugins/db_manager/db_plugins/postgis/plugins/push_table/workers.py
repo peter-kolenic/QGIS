@@ -26,11 +26,11 @@ from .... import createDbPlugin
 from ....plugin import BaseError
 from .model import DBs
 
-# pg_comparator --max-ratio argument. 2.0 means all lines can be different.
+# pg_comparator --max-ratio argument. Value 2.0 means all lines can be different.
 PG_COMPARE_MAX_RATIO = 2.0
 
 class PGComparatorWorker(QObject):
-	"""Worker object to call pg_comparator.
+	"""Worker object to call pg_comparator (threadable).
 
 	PGComparatorWorker runs pg_comparator on aruments supplied in constructor,
 	emits its messages through "printMessage" and "clearMessages", emits its result
@@ -145,6 +145,11 @@ class DBScanForPushCompatibleTables(QObject):
 
 	@pyqtSlot()
 	def process(self):
+		"""Walks through all connections/supplied connection (based on databaseConnection argument),
+		scans database information (schemas/tables/columns/primary fields) by means of
+		model.DBs.add_and_scan, then filters push compatible tables
+		by model.DBs.get_compatible_tables_by_ref and emits dbDataCreated with resulting DBs
+		"""
 		self.clearMessages.emit()
 		self.compatible_connections = None
 		self.input_table = None

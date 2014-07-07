@@ -80,6 +80,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.chboxLockTables.setChecked(False)
 		self.chboxLockTables.setEnabled(False)
 
+	# used as callbacks for worker threads
 	@pyqtSlot('QString')
 	def printMessage(self, text):
 		self.plainTextEdit.appendPlainText(text)
@@ -100,6 +101,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		return self.databases[self.cboDatabase.currentText()][1]
 
 	def populateData(self):
+		"""Called on change of database listbox in UI."""
 		if not self.cboDatabase.currentText():
 			# do nothing
 			return
@@ -150,6 +152,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.scanThread.start()
 
 	def dataReady(self, data):
+		"""Called by scanner thread as result consumer."""
 		dbs, = data
 		try:
 			self.databases[dbs.get_connection_name_when_onlyone()][1] = dbs
@@ -158,6 +161,10 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.updateDataUI()
 
 	def updateDataUI(self):
+		"""UI refreshing.
+
+		enable/disable, populate dependent controls.
+		"""
 		# enable all controls
 		self.enableControls(True)
 		if not self.dbs() or self.dbs().is_empty():
@@ -329,8 +336,3 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.printMessage("")
 		self.printMessage(self.tr("%s while pushing table: inserts :%d  updates: %d  deletes: %d") %
 			("Success" if success else "Error", inserts, updates, deletes))
-
-
-
-
-

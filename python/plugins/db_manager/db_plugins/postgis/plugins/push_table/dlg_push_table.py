@@ -64,6 +64,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.labelPKField.hide()
 		self.cboPKField.hide()
 
+		# initialisation of self.databases
 		self.populateDatabases()
 
 		# updates of UI
@@ -102,6 +103,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 
 	def populateData(self):
 		"""Called on change of database listbox in UI."""
+		self.clearMessages()
 		if not self.cboDatabase.currentText():
 			# do nothing
 			return
@@ -132,7 +134,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 			self.updateDataUI()
 			return
 
-		# Scan DB connection for compatible tables.
+		# Scan DB connection for compatible tables (in new thread).
 		# disable all controls
 		self.enableControls(False)
 		self.scanner = DBScanForPushCompatibleTables(
@@ -176,6 +178,8 @@ class DlgPushTable(QDialog, Ui_Dialog):
 			self.checkButton.setEnabled(False)
 			return
 
+		self.printMessage(self.tr("%d compatible tables to push to found in this DB" % self.dbs().tables_count()))
+
 		self.populateSchemas()
 		self.populateTables()
 		if self.input_table_ref.is_view():
@@ -195,6 +199,18 @@ class DlgPushTable(QDialog, Ui_Dialog):
 			self.checkButton.connect(self.cboPKField, SIGNAL("currentIndexChanged(int)"), lambda: self.syncButton.setEnabled(False))
 
 	def populateDatabases(self):
+		"""Initialisation function called only from constructor.
+
+		Initialises self.databases, which is hash with values
+		- self.databases["connection name"] = [ connection_object, DBs_object_with_compatible_tables ]
+		  OR
+		- self.databases["connection name"] = [ connection_object, None ] if not yet scanned
+
+		This function scans database configuration and creates entry for every configured database,
+		scans source database, leaves the rest unscanned. Databases are afterwards lazy scanned on
+		select.
+
+		"""
 		input_connection = self.inputTable.database().connection()
 		try:
 			if input_connection.database() == None:
@@ -231,6 +247,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.cboDatabase.setCurrentIndex(-1)
 
 	def populateSchemas(self):
+		"""Called by updateDataUI."""
 		self.cboSchema.clear()
 		if not self.dbs():
 			return
@@ -242,6 +259,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.cboSchema.setCurrentIndex(0 if schemas else -1)
 
 	def populateTables(self):
+		"""Called by updateDataUI and on schema combobox change."""
 		self.cboTable.clear()
 		if not self.dbs():
 			return
@@ -252,8 +270,8 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.cboTable.setEnabled(bool(tables))
 		self.cboTable.setCurrentIndex(0 if tables else -1)
 
-	# return (inputUri,outputUri,lockTables)
 	def get_pg_arguments(self):
+		"""Returns (inputUri,outputUri,lockTables) for pg_comparator based on what is selected now in UI."""
 		db = self.cboDatabase.currentText()
 		pushDiffSchemaName = self.cboSchema.currentText()
 		pushDiffTableName = self.cboTable.currentText()
@@ -269,6 +287,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		return (self.input_table_ref, output_table, self.chboxLockTables.isChecked(), force_pk)
 
 	def startCheck(self):
+		"""Spawns working thread for pg_comparator diff (in our UI called "check")."""
 		(input_table, output_table, lock_tables, force_pk) = self.get_pg_arguments()
 		if not (input_table and output_table):
 			return
@@ -292,6 +311,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.checkThread.start()
 
 	def checkFinished(self, success, inserts, updates, deletes, has_privileges):
+		"""Called to signal the check threads return."""
 		self.enableControls(True)
 		if success:
 			self.printMessage("")
@@ -306,6 +326,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 			self.printMessage(self.tr("ERROR during Check"))
 
 	def startSync(self):
+		"""Spawns working thread for pg_comparator sync."""
 		(input_table, output_table, lock_tables, force_pk) = self.get_pg_arguments()
 		if not (input_table and output_table):
 			return
@@ -329,6 +350,7 @@ class DlgPushTable(QDialog, Ui_Dialog):
 		self.syncThread.start()
 
 	def syncFinished(self, success, inserts, updates, deletes, has_privileges):	# has_privileges is ignored here
+		"""Called to signal the sync threads return."""
 		self.enableControls(True)
 		self.syncButton.setEnabled(False)
 		# QMessageBox.information(self, self.tr("Push table"), self.tr("%s while pushing table: inserts :%d  updates: %d  deletes: %d") %

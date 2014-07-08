@@ -35,6 +35,8 @@ class PGComparatorWorker(QObject):
 	PGComparatorWorker runs pg_comparator on aruments supplied in constructor,
 	emits its messages through "printMessage" and "clearMessages", emits its result
 	in "synced".
+	If You want to do pg_comparator diff, call (or bind on thread started) check().
+	If You want to do pg_comparator sync, call (or bind on thread started) sync().
 	PGComparatorWorker can be used as object moved to its own QThread,
 	emits "finished" just before exit."""
 	finished = pyqtSignal()
@@ -59,10 +61,12 @@ class PGComparatorWorker(QObject):
 
 	@pyqtSlot()
 	def check(self):
+		"""Call pg_comparator without sync option (no changes in DB)."""
 		self.process(False)
 
 	@pyqtSlot()
 	def sync(self):
+		"""Call pg_comparator with sync option."""
 		self.process(True)
 
 	@pyqtSlot(bool)
@@ -171,15 +175,11 @@ class DBScanForPushCompatibleTables(QObject):
 						self.printMessage.emit(self.tr("Unable to connect to ") + connection.connectionName() + " " + unicode(e) )
 						continue
 				if connection.database().connector.hasComparatorSupport():
-					# self.printMessage.emit(self.tr("Getting DB information from: %s") % connection.connectionName())
+					# Getting DB information from connection.connectionName()
 					connections.add_and_scan(connection)
-				# else:
-				# 	self.printMessage.emit(self.tr("Skipping connection %s, no pg_comparator support") % connection.connectionName())
 
 			self.compatible_connections = connections.get_compatible_tables_by_ref(self.input_table_ref)
 
-			if not self.compatible_connections or self.compatible_connections.is_empty():
-				self.printMessage.emit(self.tr("No compatible tables found in this database"))
 		except Exception, e:
 			self.printMessage.emit(self.tr("ERROR while scanning DB: ") + unicode(e))
 			# self.printMessage.emit(traceback.format_exc(e))

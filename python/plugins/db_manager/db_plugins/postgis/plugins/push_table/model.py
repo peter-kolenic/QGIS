@@ -58,6 +58,14 @@ class DBs(object):
 					return False
 		return True
 
+	def tables_count(self):
+		count = 0
+		for con in self.dbs.values():
+			for schema in con.schemas().values():
+				for table in schema.tables().values():
+					count += 1
+		return count
+
 	def add_table(self, connection_name, table):
 		connector = table._schema._db._connector
 		schema_name = table._schema.schema_name
@@ -86,29 +94,28 @@ class DBs(object):
 		input_table_pks = input_table.pks()
 
 		for connection_name, db in self.dbs.iteritems():
-			# self.print_message(self.tr("Searching for compatible table in DB: %s") % connection_name)
-
+			# Searching for compatible table in DB: connection_name
 			# we need to have database in output, even if no compatible tables are found
 			dbs.dbs[connection_name] = DB(db._connector)
 
 			for schema in db.schemas().values():
-				# self.print_message(self.tr("Checking schema %s in connection %s") % (schema.schema_name, connection_name))
+				# Checking schema schema.schema_name in connection connection_name
 				for table_name, table in schema.tables().iteritems():
 					if table is input_table:
-						# self.print_message(self.tr("Table %s is source table - skipping") % table_name)
+						# Table is source table - skipping
 						continue # skip source
 					if table.is_view():
-						# self.print_message(self.tr("Push into views is not supported: %s - skipping") % table_name)
+						# Push into views is not supported - skipping
 						continue
 					if input_table_fields != table.fields():
-						# self.print_message(self.tr("Table %s is not column compatible - skipping") % table_name)
+						# Table is not column compatible - skipping
 						continue
 					# PKs compatibility is checked only for regular tables
 					if not input_table.is_view() and input_table_pks != table.pks():
-						# self.print_message(self.tr("Table %s is column compatible, but has not the same primary keys - skipping") % table_name)
+						# Table is column compatible, but has not the same primary keys - skipping
 						continue
+					# Compatible table found
 					dbs.add_table(connection_name, table)
-					self.print_message(self.tr("Compatible table %s found in schema %s in connection %s") % (table.table_name, schema.schema_name, connection_name))
 
 		return dbs
 
@@ -225,9 +232,7 @@ class DBs(object):
 		connector._close_cursor(c)
 
 		for field in fields:
-			# self.print_message(self.tr("Schema: %s  Table: %s  Field: %s Name: %s Type:%s") % tuple(field))
 			db.get_or_create_schema(field[0]).get_or_create_table(field[1]).add_field(field[2], field[3], field[4])
-
 
 		# get primary keys: ( schema, table, PKname, column_name(+) )
 		sql = u"""
@@ -254,7 +259,6 @@ class DBs(object):
 		connector._close_cursor(c)
 
 		for pk in primaryKeys:
-			# self.print_message(self.tr("Schema: %s  Table: %s  PK: %s") % tuple(pk[0:3]))
 			db.get_or_create_schema(pk[0]).get_or_create_table(pk[1]).add_pk(pk[3])
 
 		return db
@@ -317,8 +321,10 @@ class Table(object):
 	def pg_comparator_connect_string(self, force_pk = None):
 		(username, password, host, port, database) = self._schema._db.get_connect_params()
 		pk = ",".join(force_pk if force_pk else list(self._primary_keys))
-		# FIXME: escape [@"/:?] in password
-		# No fear of shell code injection, since Popen(shell=False)
+		# INFO escaping of special chars in password:
+		#   (pg_comparator = 2.2.2) it looks like @:? doesn't need escaping, and
+		#   there is no way to escape /
+		# No fear of shell code injection, since Popen(shell=False) (unless pg_comparator)
 		s = 'pgsql://%(username)s%(pass)s%(host)s%(port)s/%(base)s/%(schema)s"%(table)s"?%(pk)s' % {
 			"username": username if username else '',
 			"pass": ':%s' % password if  username and password else '',
